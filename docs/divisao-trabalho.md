@@ -36,7 +36,13 @@ bloco, para que a nota fique distribuída e todos tenham o que defender.
 - Cromossomo = permutação dos índices das cidades (`std::vector<int>`);
   geração de indivíduo aleatório.
 - `Selecao`: torneio de tamanho `k`.
-- `Cruzamento`: OX (Order Crossover).
+- `Cruzamento`: ERX (Edge Recombination) em vez do OX mais comum — para
+  cada cidade, monta a lista de vizinhos a partir dos dois pais e percorre
+  priorizando arestas comuns, com fallback aleatório em beco sem saída
+  (lista de vizinhos vazia). Preserva arestas dos pais em vez de posições
+  (o que importa de fato pra distância da rota), mas perde diversidade da
+  população mais rápido que o OX — equilibrar com a taxa de mutação
+  (bloco de C).
 - `Mutacao`: inversão de trecho.
 - Testes: todo filho e todo mutante continua sendo permutação válida; mesma
   seed, mesmo resultado.
@@ -91,6 +97,36 @@ bloco, para que a nota fique distribuída e todos tenham o que defender.
 | 13 | 17/10 | Revisão cruzada e ensaio da arguição: todos conseguem explicar todos os itens. |
 | 14 | 18/10 | Folga para imprevistos; entrega em 19/10. |
 
+## Bônus condicional — EAX-single, TSPLIB e métricas extras
+
+Ideias levantadas durante o desenho da arquitetura, fora do escopo
+obrigatório (nenhum item da nota pede isso — tudo aqui compete pelo mesmo
+"bônus até 1 ponto" da tabela do topo). Só começar depois que o pipeline
+principal (ERX + cenários aleatório e círculo) estiver rodando ponta a
+ponta, testado e com gráficos — ou seja, não antes dos dias 9–10
+(13–14/10) do cronograma, e sem atrasar a integração dos dias 7–8.
+
+- **EAX-single (1 AB-cycle) como segundo `ICruzamento`**: mais complexo
+  que ERX — monta o multigrafo das arestas dos dois pais, decompõe em
+  AB-cycles, aplica a diferença simétrica de um ciclo e precisa de um
+  passo de *merge* guloso pra remontar os subciclos resultantes em um
+  único ciclo hamiltoniano válido. Plugável sem tocar no laço evolutivo
+  porque `AlgoritmoGenetico` já depende da interface `ICruzamento`, não
+  de ERX diretamente. Dono natural: B (quem já fez ERX), com apoio de D
+  pra visualizar os AB-cycles dos dois pais em cores diferentes.
+- **TSPLIB com ótimo conhecido** (berlin52, eil51, kroA100, ch150): mais
+  uma fonte de `Cenario` (como `gerarUniforme`/`gerarCirculo`), então
+  cabe na abstração de A — só um parser do formato TSPLIB. Dá um gap ao
+  ótimo real pra reportar, útil mesmo sem o EAX.
+- **Métricas extras no `historico.csv`** (infra de A, registrado por C a
+  cada época): % de arestas do filho herdadas de cada pai vs. arestas
+  novas (edge inheritance), diversidade da população (distância média de
+  arestas entre indivíduos), tempo por geração vs. qualidade por geração
+  — mostra o trade-off de EAX ser mais lento por geração mas potencialmente
+  melhor no tempo total até convergir.
+- Se sobrar tempo depois de tudo isso: 2-opt como busca local (memético)
+  sobre os filhos, pra ver o quanto a diferença entre ERX e EAX diminui.
+
 ## Riscos
 
 - **Contrato atrasar** trava os outros três: é a única tarefa com prazo rígido
@@ -100,3 +136,8 @@ bloco, para que a nota fique distribuída e todos tenham o que defender.
 - **Python não está instalado no PATH** nesta máquina; rodar os scripts com
   `uv run` (que baixa Python e dependências) ou cada um instala por conta
   própria.
+- **Bônus condicional (EAX/TSPLIB/métricas) comer tempo do obrigatório**:
+  tudo isso junto vale no máximo 1 ponto, contra 9 pontos do que já está
+  no cronograma; se os dias 9–10 chegarem e o pipeline principal (ERX +
+  aleatório + círculo) não estiver testado e com gráficos, abandonar o
+  bônus sem culpa.
