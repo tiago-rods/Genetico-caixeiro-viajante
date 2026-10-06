@@ -80,3 +80,42 @@ foi escolhido), **Alternativas consideradas** (e por que não),
   segundo `ICruzamento` sem refatorar o laço evolutivo, se decidirem
   tentar.
 - **Data**: 2026-10-05
+
+## 004 — Implementação do bloco B: `Individuo`, `Torneio`, `ERX`, `InversaoMutacao`
+
+- **Contexto**: bloco B (representação do cromossomo + os três operadores
+  genéticos atrás de `ISelecao`/`ICruzamento`/`IMutacao`) implementado e
+  revisado linha a linha. Algumas escolhas de implementação não ficam
+  óbvias só lendo o código final, vale registrar.
+- **Decisão**:
+  - `Torneio` sorteia os `k` candidatos **com reposição** (o mesmo índice
+    pode saír mais de uma vez) — simplifica a implementação; o custo de
+    eventualmente repetir um candidato é desprezível pra `k` pequeno
+    frente ao tamanho da população.
+  - `InversaoMutacao` sorteia o índice `i` e um deslocamento em
+    distribuições **separadas**, a segunda com range `[1, size-1]` (não
+    `[0, size-1]`), e soma com módulo pra achar `j`. Isso garante
+    `j != i` (evitando mutação nula) numa única sorteada, sem laço de
+    rejeição e sem risco de `j` estourar o vetor.
+  - `ERX` guarda a tabela de vizinhos como `std::vector<std::set<int>>`
+    (no máximo 4 vizinhos por cidade — 2 de cada pai). O `set` resolve de
+    graça tanto a deduplicação de arestas comuns aos dois pais quanto a
+    remoção O(log n) durante a caminhada. A escolha do próximo passo
+    prioriza o candidato com menor grau restante (heurística clássica do
+    ERX), com desempate aleatório entre os de grau mínimo e fallback
+    aleatório entre as cidades não visitadas quando não há candidato
+    (beco sem saída).
+- **Alternativas consideradas**: torneio sem reposição — mais "correto"
+  estatisticamente, mas complexidade extra (controlar quais índices já
+  saíram) sem ganho relevante pra `k` pequeno. Laço de rejeição pra
+  `InversaoMutacao` (sortear `j` de novo enquanto `j == i`) — rejeitado a
+  favor do deslocamento com range `[1, size-1]`, que resolve em tempo
+  constante garantido, sem laço. `std::unordered_set` na tabela do ERX —
+  rejeitado, o overhead de hashing não compensa pra conjuntos de tamanho
+  ≤ 4.
+- **Consequências**: os três operadores e a geração de indivíduo foram
+  conferidos manualmente contra `ehPermutacaoValida`
+  (`tests/genetico/VerificarPermutacao.hpp`) e por revisão de código
+  linha a linha; bloco B pronto pra integração com C via as interfaces
+  (`AlgoritmoGenetico` não depende de nenhuma implementação concreta).
+- **Data**: 2026-10-05
