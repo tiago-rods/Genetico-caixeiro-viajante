@@ -48,6 +48,10 @@ bloco, para que a nota fique distribuída e todos tenham o que defender.
   seed, mesmo resultado.
 - Bloco mais isolado: só usa `std::vector<int>` e `std::mt19937`, então não
   espera ninguém.
+- **Status (05/10): implementado e revisado** — `Individuo`, `Torneio`,
+  `ERX` e `InversaoMutacao` escritos, testados manualmente contra
+  `ehPermutacaoValida` e com decisões de implementação registradas em
+  `documentacao-decisoes.md` (entrada 004). Pronto pra integração com C.
 
 ### Pessoa C — Laço evolutivo e experimentos
 - `Parametros` (população, taxas, torneio, elite, gerações, estagnação, seed).
