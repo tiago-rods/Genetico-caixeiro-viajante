@@ -12,9 +12,9 @@ namespace tsp::genetico {
 
         //sorteia os outros (tamanhoTorneio_ - 1) e guarda a maior aptidão
         for (std::size_t i = 1; i < tamanhoTorneio_; ++i) {
-            std::size_t canditato = distribuicao(rng);
-            if (aptidoes[canditato] > aptidoes[melhorIndice]) {
-                melhorIndice = canditato;
+            std::size_t candidato = distribuicao(rng);
+            if (aptidoes[candidato] > aptidoes[melhorIndice]) {
+                melhorIndice = candidato;
             }
         }
 
