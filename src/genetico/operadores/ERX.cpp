@@ -4,11 +4,12 @@
 #include <random>
 #include <set>
 #include <vector>
+#include <map>
 
 
 namespace tsp::genetico {
         
-    using TabelaVizinhos = std::vector<std::set<int>>;
+    using TabelaVizinhos = std::vector<std::map<int, int>>; // ao usar um map, permite saber quantos pais trazem a aresta, 1 ou 2
 
     namespace {
         /*
@@ -25,8 +26,8 @@ namespace tsp::genetico {
                 int anterior = pai[(i + numCidades - 1) % numCidades]; // vizinho anterior, circular
                 int proximo = pai[(i + 1) % numCidades]; // vizinho proximo, circular
 
-                vizinhos[cidade].insert(anterior);
-                vizinhos[cidade].insert(proximo);
+                vizinhos[cidade][anterior]++; // Incrementa contador de vizinhos, permitindo saber se a aresta veio de um ou dois pais
+                vizinhos[cidade][proximo]++;
             }
         }
 
@@ -62,24 +63,31 @@ namespace tsp::genetico {
 
         while (filho.size() < numCidades){
             // Copia os vizinhos da cidade atual antes de remover as referências dela na tabela, pois ainda vamos precisar dessa info
-            std::set<int> vizinhosAtuais = vizinhos[cidadeAtual];
+            std::map<int, int> vizinhosAtuais = vizinhos[cidadeAtual];
 
             // A relação é simétrica por construção, se A é vizinho de B, B é de A,
             // Então, remover a cidade atual de cada um dos seus vizinhos, já fecha a aresta dos dois lados
             // não precisa percorrer a tabela inteira para limpar isso
 
-            for (int vizinho : vizinhosAtuais){
+            for (auto& [vizinho, contagem]: vizinhosAtuais){
                 vizinhos[vizinho].erase(cidadeAtual);
             }
 
             // entre os vizinhos da cidade atual, filtra só quem ainda não foi visitado
 
             std::vector<int> candidatos;
-            for (int vizinho : vizinhosAtuais){
+            for (auto& [vizinho, contagem]:vizinhosAtuais){
                 if (!visitado[vizinho]) candidatos.push_back(vizinho);
             }
 
             int proximaCidade;
+
+            std::vector<int> candidatosArestasComum;
+            for (int candidato : candidatos){
+                if (vizinhosAtuais.at(candidato) == 2 ) candidatosArestasComum.push_back(candidato);
+                // se a aresta veio de ambos os pais, prioriza ela
+            }
+            if (!candidatosArestasComum.empty()) candidatos = candidatosArestasComum;
 
             if (candidatos.empty()){
                 // nenhym vizinho disponível, logo esta preso nesse estado
