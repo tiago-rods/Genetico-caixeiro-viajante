@@ -1,147 +1,109 @@
-# Divisão de trabalho (4 integrantes, 2 semanas)
+# Divisão de trabalho (4 integrantes, 1 mês)
 
-Projeto 2: algoritmo genético para o caixeiro viajante em 2D (núcleo em C++,
-gráficos em Python). Datas assumem início em 05/10/2026 e entrega em
-19/10/2026 — ajustar se o prazo real for outro.
+AG para o caixeiro viajante em 2D: núcleo em C++, gráficos em Python.
+Início em 05/10/2026, entrega em 28/10/2026.
 
-## Critério da divisão
+## Divisão
 
-Cada pessoa é dona de um bloco de código **e** da explicação pontuada daquele
-bloco, para que a nota fique distribuída e todos tenham o que defender.
-
-| Pessoa | Bloco | Itens da nota que defende |
+| Pessoa | Bloco | Itens que defende |
 |---|---|---|
-| A | Problema, aptidão e infraestrutura | Função de aptidão (1 pt) |
-| B | Representação e operadores genéticos | Representação do gene e cruzamento (2 pts) |
-| C | Laço evolutivo e experimentos | População e critério de parada (1 pt), taxa de mutação (1 pt) |
-| D | Visualização, execução dos cenários e relatório | Desempenho por época: aleatório (2,5) e circular (2,5), bônus (até 1) |
+| A | Problema, aptidão e infraestrutura | Aptidão (1) |
+| B | Representação e operadores | Gene e cruzamento (2) |
+| C | Laço evolutivo e experimentos | População e parada (1), mutação (1) |
+| D | Visualização, execução e relatório | Aleatório (2,5), circular (2,5), bônus (até 1) |
 
-## Divisão sugerida
+## Item da nota → evidência no relatório
 
-### Pessoa A — Problema, aptidão e infraestrutura
-- `CMakeLists.txt` (C++17, Ninja, link `-static`), `.gitignore`, esqueleto de
-  pastas, `README.md` com como compilar e rodar.
-- `tsp/`: `Ponto`, geração dos cenários (`gerarUniforme`, `gerarCirculo`),
-  ótimo do círculo `2·N·R·sin(π/N)`, matriz de distâncias, `distanciaRota`
-  (ciclo fechado).
-- Função de aptidão: `1 / distância total`.
-- `io/`: leitura dos argumentos da linha de comando e gravação de
-  `pontos.csv`, `historico.csv`, `rotas.csv` e `resumo.txt`.
-- Testes: quadrado unitário mede 4; ótimo do círculo confere com a soma das
-  arestas.
-- **Entrega primeiro (dias 1–2):** os `.hpp` com as assinaturas e o formato
-  dos CSVs, porque B, C e D dependem disso.
-
-### Pessoa B — Representação e operadores genéticos
-- Cromossomo = permutação dos índices das cidades (`std::vector<int>`);
-  geração de indivíduo aleatório.
-- `Selecao`: torneio de tamanho `k`.
-- `Cruzamento`: ERX (Edge Recombination) em vez do OX mais comum — para
-  cada cidade, monta a lista de vizinhos a partir dos dois pais e percorre
-  priorizando arestas comuns, com fallback aleatório em beco sem saída
-  (lista de vizinhos vazia). Preserva arestas dos pais em vez de posições
-  (o que importa de fato pra distância da rota), mas perde diversidade da
-  população mais rápido que o OX — equilibrar com a taxa de mutação
-  (bloco de C).
-- `Mutacao`: inversão de trecho.
-- Testes: todo filho e todo mutante continua sendo permutação válida; mesma
-  seed, mesmo resultado.
-- Bloco mais isolado: só usa `std::vector<int>` e `std::mt19937`, então não
-  espera ninguém.
-- **Status (05/10): implementado e revisado** — `Individuo`, `Torneio`,
-  `ERX` e `InversaoMutacao` escritos, testados manualmente contra
-  `ehPermutacaoValida` e com decisões de implementação registradas em
-  `documentacao-decisoes.md` (entrada 004). Pronto pra integração com C.
-
-### Pessoa C — Laço evolutivo e experimentos
-- `Parametros` (população, taxas, torneio, elite, gerações, estagnação, seed).
-- `AlgoritmoGenetico`: população inicial, avaliação, elitismo, seleção →
-  cruzamento → mutação, registro das estatísticas por época, parada por teto
-  de gerações ou por estagnação.
-- `main.cpp`: liga cenário, AG e gravação; imprime o acompanhamento por época
-  no terminal.
-- `experimentos.cpp`: varredura de população × taxa de mutação com várias
-  seeds, gravando um CSV.
-- Medição de tempo (total e até a última melhora), usada no bônus.
-- Testes: com elitismo o melhor nunca piora; círculo de 8 pontos atinge o
-  ótimo.
-- Pode começar com operadores provisórios (ex.: troca simples) e trocar pelos
-  de B na integração.
-
-### Pessoa D — Visualização, execução e relatório
-- `viz/plotar.py`: curva de convergência (melhor e média por época), grade de
-  snapshots da rota, GIF animado.
-- `viz/plotar_experimentos.py`: gráficos da varredura de população e de
-  mutação.
-- `rodar_tudo.ps1`: compila, roda os três cenários e gera as figuras.
-- Executa e documenta os cenários: uniforme, círculo (com gap para o ótimo) e
-  bônus (círculo com muitos pontos, tempos e épocas intermediárias).
-- `docs/relatorio.md`: junta as explicações escritas por A, B e C com as
-  figuras e os números medidos.
-- Desenvolve os gráficos desde o dia 1 com CSVs de exemplo escritos à mão no
-  formato combinado.
-
-## Dependências entre blocos
-
-- **A → todos**: assinaturas e formato dos CSVs saem nos dias 1–2; o resto de
-  A segue em paralelo.
-- **B → C**: C integra os operadores de B no dia 7; antes disso usa
-  provisórios.
-- **A + C → D**: D só precisa de CSVs reais a partir do dia 7.
-
-## Cronograma sugerido (05/10 a 19/10)
-
-| Dias | Datas | O que acontece |
+| Item | Evidência | Dono |
 |---|---|---|
-| 1–2 | 05–06/10 | Reunião de contrato: assinaturas, formato dos CSVs, parâmetros. A sobe o esqueleto que compila. |
-| 3–6 | 07–10/10 | Os quatro blocos em paralelo, cada um com seus testes. |
-| 7–8 | 11–12/10 | Integração: primeira execução ponta a ponta nos dois cenários, com figuras. |
-| 9–10 | 13–14/10 | Varredura de população e mutação, escolha dos valores finais, execução do bônus. |
-| 11–12 | 15–16/10 | Relatório: cada um escreve a explicação do seu bloco; D consolida. |
-| 13 | 17/10 | Revisão cruzada e ensaio da arguição: todos conseguem explicar todos os itens. |
-| 14 | 18/10 | Folga para imprevistos; entrega em 19/10. |
+| População e parada | Varredura de população; curvas mostrando onde a melhora para | C |
+| Mutação | Mapa de calor população × mutação; curvas com mutação baixa e alta | C |
+| Gene e cruzamento | Explicação do ERX; comparação ERX × OX | B |
+| Aptidão | Explicação de `1/distância` | A |
+| Aleatório | Curvas por época; rotas por época (grade e GIF); comparação com força bruta (N ≤ 10) e vizinho mais próximo; média ± desvio em ~10 seeds | D |
+| Circular | O mesmo, mais o gap (%) para o ótimo | D |
+| Bônus | Círculo com N grande: tempo até gap ≤ 5%, ≤ 1% e até a última melhora; rotas intermediárias | D |
 
-## Bônus condicional — EAX-single, TSPLIB e métricas extras
+## Tarefas
 
-Ideias levantadas durante o desenho da arquitetura, fora do escopo
-obrigatório (nenhum item da nota pede isso — tudo aqui compete pelo mesmo
-"bônus até 1 ponto" da tabela do topo). Só começar depois que o pipeline
-principal (ERX + cenários aleatório e círculo) estiver rodando ponta a
-ponta, testado e com gráficos — ou seja, não antes dos dias 9–10
-(13–14/10) do cronograma, e sem atrasar a integração dos dias 7–8.
+### A — Problema, aptidão e infraestrutura
+- `CMakeLists.txt` (C++17, Ninja, `-static`), `.gitignore`, README com como rodar.
+- `Ponto`, `gerarUniforme`, `gerarCirculo`, matriz de distâncias, `distanciaRota` (ciclo fechado). N arbitrário (≥ 8) pela linha de comando.
+- Círculo com pontos igualmente espaçados (ótimo = `2·N·R·sin(π/N)`) e índices embaralhados.
+- Referências para o uniforme: força bruta (N ≤ 10) e vizinho mais próximo.
+- Aptidão `1/distância`. Como o torneio só compara, equivale a usar `−d`.
+- `io/`: argumentos e arquivos de saída (ver abaixo).
+- Testes: quadrado unitário mede 4; ótimo do círculo confere.
+- **Semana 1:** `.hpp` e formato dos arquivos, porque todos dependem disso.
 
-- **EAX-single (1 AB-cycle) como segundo `ICruzamento`**: mais complexo
-  que ERX — monta o multigrafo das arestas dos dois pais, decompõe em
-  AB-cycles, aplica a diferença simétrica de um ciclo e precisa de um
-  passo de *merge* guloso pra remontar os subciclos resultantes em um
-  único ciclo hamiltoniano válido. Plugável sem tocar no laço evolutivo
-  porque `AlgoritmoGenetico` já depende da interface `ICruzamento`, não
-  de ERX diretamente. Dono natural: B (quem já fez ERX), com apoio de D
-  pra visualizar os AB-cycles dos dois pais em cores diferentes.
-- **TSPLIB com ótimo conhecido** (berlin52, eil51, kroA100, ch150): mais
-  uma fonte de `Cenario` (como `gerarUniforme`/`gerarCirculo`), então
-  cabe na abstração de A — só um parser do formato TSPLIB. Dá um gap ao
-  ótimo real pra reportar, útil mesmo sem o EAX.
-- **Métricas extras no `historico.csv`** (infra de A, registrado por C a
-  cada época): % de arestas do filho herdadas de cada pai vs. arestas
-  novas (edge inheritance), diversidade da população (distância média de
-  arestas entre indivíduos), tempo por geração vs. qualidade por geração
-  — mostra o trade-off de EAX ser mais lento por geração mas potencialmente
-  melhor no tempo total até convergir.
-- Se sobrar tempo depois de tudo isso: 2-opt como busca local (memético)
-  sobre os filhos, pra ver o quanto a diferença entre ERX e EAX diminui.
+### B — Representação e operadores
+- Feito: permutação de índices; torneio de tamanho `k`; ERX (prioriza arestas comuns aos dois pais, depois o menor grau); mutação por inversão (equivale a um 2-opt aleatório).
+- Falta:
+  - OX como segundo `ICruzamento`, para comparar com o ERX.
+  - README e decisão 005 com a prioridade às arestas comuns (commit de 08/10).
+  - Remover o comentário obsoleto em `ERX.cpp` (linha 36).
+
+### C — Laço evolutivo e experimentos
+- `Parametros`: população, taxas de cruzamento e mutação, torneio, elite, máximo de épocas, estagnação, meta, seed, cruzamento.
+- `AlgoritmoGenetico`: elitismo, seleção → cruzamento → mutação, estatísticas por época. Nova população em vetor separado.
+- Parada: o primeiro entre máximo de épocas, estagnação e meta (gap no círculo).
+- Mutação = probabilidade, por filho, de aplicar uma inversão.
+- `main.cpp`: roda um cenário e imprime cada época.
+- `experimentos.cpp`: população × mutação × cruzamento, ~10 seeds.
+- Testes (CTest): o melhor nunca piora; círculo de 8 e força bruta atingem o ótimo; filhos e mutantes são permutações válidas.
+- Opcional: diversidade da população por época.
+
+### D — Visualização, execução e relatório
+- `plotar.py`: curva melhor/média/pior por época, grade de rotas, GIF.
+- `plotar_experimentos.py`: mapa de calor, ERX × OX, boxplot das seeds.
+- Rodar com `uv run` (dependências no topo de cada script, PEP 723).
+- `rodar_tudo.ps1`: compila, roda e gera as figuras.
+- Cenários: uniforme e círculo com N ≤ 10 e N ≈ 30–50; bônus com círculo de N = 100 a 1000.
+- `relatorio.md`: junta textos e figuras; usar a tabela de evidências como checklist.
+- Começa com CSVs de exemplo no formato abaixo.
+
+## Arquivos de saída
+
+Uma pasta por execução (ex.: `saida/circulo_n50_s1/`).
+
+| Arquivo | Formato |
+|---|---|
+| `pontos.csv` | `indice,x,y` |
+| `historico.csv` | `epoca,melhor,media,pior,tempo_s` (época 0 = população inicial; tempo acumulado) |
+| `rotas.csv` | `epoca,distancia,rota` (índices separados por espaço; toda época, ou a cada `k` com `--intervalo-rotas`) |
+| `resumo.txt` | `chave=valor`: parâmetros, melhor distância, ótimo ou referência, gap, motivo da parada, tempos |
+| `experimentos.csv` | `cenario,n,populacao,taxa_mutacao,cruzamento,seed,melhor,epocas,tempo_s` |
+
+Argumentos: `--cenario`, `--n`, `--seed`, `--populacao`, `--taxa-cruzamento`,
+`--taxa-mutacao`, `--torneio`, `--elite`, `--max-epocas`, `--estagnacao`,
+`--cruzamento erx|ox`, `--intervalo-rotas`, `--saida`.
+
+## Dependências
+
+- A → todos: `.hpp` e formato dos arquivos na semana 1.
+- B → C: operadores prontos; OX quando sair.
+- A + C → D: arquivos reais a partir da semana 3.
+
+## Cronograma (05/10 a 28/10)
+
+| Semana | Datas | O que acontece |
+|---|---|---|
+| 1 | 05–11/10 | Formato dos arquivos, esqueleto que compila, operadores do B (feito) |
+| 2 | 12–18/10 | A, C e D em paralelo; B faz o OX |
+| 3 | 19–23/10 | Integração, varreduras, valores finais, bônus; textos começam |
+| 4 | 24–26/10 | Relatório; D consolida |
+| — | 27/10 | Revisão cruzada e ensaio |
+| — | 28/10 | Entrega |
+
+## Extras (fora da nota)
+
+EAX-single, TSPLIB e 2-opt, só se sobrar tempo. O 2-opt resolveria o círculo
+sozinho e esconderia o desempenho do AG.
 
 ## Riscos
 
-- **Contrato atrasar** trava os outros três: é a única tarefa com prazo rígido
-  nos dias 1–2.
-- **Bônus com muitos pontos pode não convergir** ao ótimo exato; vale reportar
-  o gap e o tempo mesmo assim, e começar os testes no dia 9, não na véspera.
-- **Python não está instalado no PATH** nesta máquina; rodar os scripts com
-  `uv run` (que baixa Python e dependências) ou cada um instala por conta
-  própria.
-- **Bônus condicional (EAX/TSPLIB/métricas) comer tempo do obrigatório**:
-  tudo isso junto vale no máximo 1 ponto, contra 9 pontos do que já está
-  no cronograma; se os dias 9–10 chegarem e o pipeline principal (ERX +
-  aleatório + círculo) não estiver testado e com gráficos, abandonar o
-  bônus sem culpa.
+- Atraso no formato dos arquivos trava todo mundo.
+- Bônus pode não chegar ao ótimo: por isso mede-se o gap.
+- `rotas.csv` fica grande com N alto: usar `--intervalo-rotas`.
+- O `python` do PATH é o atalho da Microsoft Store: usar `uv run`.
+- A mesma seed só reproduz com o mesmo compilador (g++ do MSYS2).
