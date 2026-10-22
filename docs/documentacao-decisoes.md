@@ -119,3 +119,94 @@ foi escolhido), **Alternativas consideradas** (e por que não),
   linha a linha; bloco B pronto pra integração com C via as interfaces
   (`AlgoritmoGenetico` não depende de nenhuma implementação concreta).
 - **Data**: 2026-10-05
+
+## 005 — Implementação do bloco A: `core`, `io` e build
+
+- **Contexto**: o bloco A (CMake, cenários, distâncias, aptidão, leitura de
+  argumentos e gravação dos CSVs) ainda estava só no esqueleto quando o
+  bloco C foi integrado, e sem ele nada compilava nem rodava. Foi
+  implementado junto com o C, seguindo o contrato descrito em
+  `divisao-trabalho.md`.
+- **Decisão**:
+  - `core` não depende de `genetico`: `distanciaRota` recebe
+    `std::vector<int>` (que é o que `Individuo` é), então o problema não
+    conhece o algoritmo.
+  - `MatrizDistancias` pré-calcula as n² distâncias num `vector` contíguo
+    (`linha * n + coluna`). Avaliar uma rota vira n leituras, sem raiz.
+  - Uniforme em `[0, 100]²` e círculo de raio 50 centrado em `(50, 50)`:
+    mesma caixa, gráficos comparáveis. Ótimo do círculo pela fórmula
+    `2·n·r·sin(π/n)`, guardado em `Cenario::otimo` (`std::optional`,
+    vazio no uniforme). Os pontos do círculo saem em ordem angular: como a
+    população inicial é embaralhada e nenhum operador olha para o valor do
+    índice, isso não dá vantagem ao AG.
+  - `io::CsvWriter` é genérico (cabeçalho + `linha(...)` variádico) e as
+    funções `gravarPontos/Historico/Rotas/Resumo` fixam o formato de cada
+    arquivo num lugar só. `rotas.csv` grava a melhor rota só quando ela
+    melhora, porque com elitismo ela não muda entre duas melhorias; isso
+    basta para reconstruir a solução de qualquer época sem repetir a mesma
+    rota milhares de vezes.
+  - `io::ArgParser` lê `--chave valor` e aponta as chaves que ninguém
+    consultou, para que um erro de digitação (`--mutaçao`) não rode
+    calado com o valor padrão.
+  - CMake: biblioteca estática `tsp_nucleo` com tudo menos os `main`,
+    executáveis `tsp` e `experimentos`, um teste por bloco (`ctest`),
+    Release por padrão e `-static` no MinGW.
+- **Alternativas consideradas**: GoogleTest ou Catch2 — rejeitados, são
+  uma dependência baixada pelo CMake para testes que cabem num
+  `verificar(condição, descrição)` (`tests/Verificacao.hpp`). Calcular a
+  distância sob demanda — rejeitado, seria uma raiz por aresta, por
+  indivíduo, por geração. Gravar a rota de toda época em `rotas.csv` —
+  rejeitado pelo tamanho (500 pontos × 5000 épocas) sem informação nova.
+- **Consequências**: a matriz custa `8·n²` bytes (cerca de 32 MB com
+  2000 pontos), o que limita o tamanho do bônus mas não os cenários
+  normais. Quem plota (D) precisa reconstruir a rota de cada época a
+  partir das melhorias (`rotas.csv`), o que é um `searchsorted` sobre a
+  coluna `geracao`.
+- **Data**: 2026-10-21
+
+## 006 — Laço evolutivo e parâmetros: população 400, mutação 0,5, estagnação `max(300, 3·n)`
+
+- **Contexto**: o bloco C precisava fixar os parâmetros do laço (população,
+  taxa de mutação, critério de parada) com justificativa medida, não só
+  "valores usuais". O ERX (decisão 002) faz a população perder
+  diversidade rápido, então a interação com a mutação precisava ser
+  medida.
+- **Decisão**:
+  - Laço geracional com elitismo de 2, torneio k = 3 e cruzamento 0,9.
+    Esses três ficaram em valores usuais e não foram variados.
+  - Taxa de mutação = probabilidade de um filho sofrer uma inversão
+    (por indivíduo, não por gene). **0,5**.
+  - População **400**.
+  - Parada por estagnação da melhor rota, com tolerância relativa 1e-9,
+    limite **`max(300, 3·n)`** (`estagnacaoPadrao` em `Parametros.hpp`),
+    mais um teto de segurança de 20 000 gerações.
+  - Diversidade (arestas distintas na população / n) registrada a cada
+    época, para mostrar o efeito da mutação sobre o ERX.
+  - Medições: `experimentos` com 10 seeds sobre a mesma instância, 50 e
+    100 pontos, nos dois cenários. Gap do uniforme contra uma referência
+    2-opt + Or-opt (`scripts/referencia_2opt.py`), porque o melhor do
+    próprio AG seria uma referência fraca. Números e tabelas no README.
+- **Alternativas consideradas**:
+  - Mutação 0,8 — melhor no uniforme (cerca de 1 ponto percentual), mas falha no
+    círculo de 100 pontos em 4 das 5 populações testadas (uma execução
+    termina 96% acima do ótimo). Mutação 1,0 falha sempre nesse círculo.
+    Sem mutação, a melhor rota para de melhorar em no máximo 59 gerações e
+    a população termina inteira igual (diversidade 1,0).
+  - População 200 com mais gerações — rejeitada: com o mesmo trabalho
+    total, 400 é igual ou melhor, e com 100 pontos esperar até 2000
+    gerações paradas não muda o resultado de P = 200. População 800 —
+    ainda melhora, mas cada duplicação rende menos e dobra o custo por
+    época.
+  - Limite fixo de estagnação — rejeitado: o mínimo que o círculo precisa
+    para não parar antes do ótimo cresce com n (50, 200 e 400 gerações com
+    50, 100 e 200 pontos). Parar ao atingir o ótimo — só existe no círculo.
+    Parar quando a população converge — com mutação 0,5 ela não converge
+    (diversidade final ~9,6), então nunca dispararia.
+- **Consequências**: com 50 e 100 pontos uma execução leva de 2 a 16 s e
+  acerta o ótimo do círculo em todas as seeds. No uniforme, o AG puro fica
+  a ~2% da referência com 50 pontos e a ~7,5% com 100. Com mais pontos,
+  o gap cresce, e o próximo ganho real viria de busca local (2-opt
+  memético, decisão 003), não de ajuste fino desses parâmetros. Os tempos
+  da varredura em paralelo servem só para comparar configurações entre
+  si; o tempo de referência (e do bônus) é o do `tsp` rodando sozinho.
+- **Data**: 2026-10-22
