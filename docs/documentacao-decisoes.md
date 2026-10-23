@@ -119,3 +119,63 @@ foi escolhido), **Alternativas consideradas** (e por que não),
   linha a linha; bloco B pronto pra integração com C via as interfaces
   (`AlgoritmoGenetico` não depende de nenhuma implementação concreta).
 - **Data**: 2026-10-05
+
+## 005 — Implementação do bloco A: `core/`, `io/`, build e testes
+
+- **Contexto**: B, C e D dependem do bloco A (problema, aptidão e
+  infraestrutura). O contrato (assinaturas dos `.hpp` e formato dos
+  arquivos de saída) precisava ficar fechado antes da integração, e
+  algumas escolhas não ficam óbvias só lendo o código.
+- **Decisão**:
+  - **Matriz de distâncias pré-calculada** (`calcularMatrizDistancias`,
+    `std::vector<std::vector<double>>`): calculada uma vez antes do AG;
+    cada avaliação de rota vira leitura de memória em vez de `sqrt`.
+    Calcula só `i < j` e espelha (simétrica, diagonal zero).
+  - **`distanciaRota` recebe `std::vector<int>`**, não
+    `genetico::Individuo`: como `Individuo` é só um alias, funciona igual,
+    e `core/` não passa a depender de `genetico/` (dependência só no
+    sentido A → todos). Soma o **ciclo fechado**, com a aresta
+    `rota[N-1] → rota[0]` via `(i + 1) % N`.
+  - **Aptidão = 1 / distância**, recebendo a distância já calculada (C usa
+    o mesmo valor no histórico sem somar a rota de novo). O `Torneio`
+    maximiza e o problema minimiza, então precisa de uma função
+    decrescente; como o torneio só compara, qualquer função decrescente
+    daria a mesma seleção — 1/d por ser positiva, sem parâmetro e
+    invariante à escala. Lança erro para distância ≤ 0.
+  - **`Cenario` guarda `std::optional<double> otimoConhecido`**: o círculo
+    preenche com `2·N·R·sin(π/N)`, o uniforme fica `std::nullopt`. O
+    círculo sai em ordem angular (a rota `0..N-1` é a ótima) e não usa
+    rng — a população inicial já é aleatória.
+  - **`ArgParser` genérico** (`--chave valor`, `obterInt/Double/String`
+    com padrão): não conhece os `Parametros` de C, então C cria ou
+    renomeia parâmetros sem mexer em A. Valida a conversão inteira
+    (`12abc` é erro) e expõe `chavesNaoUsadas()` para pegar erro de
+    digitação (`--geracos`).
+  - **Formato dos arquivos** (combinado com D): vírgula como separador,
+    ponto decimal (locale "C", independente do Windows em pt-BR), 6 casas
+    em `fixed` (sem notação científica). `historico.csv` guarda
+    distâncias, não aptidão. Em `rotas.csv` a rota fica numa coluna só,
+    cidades separadas por espaço, sem repetir a primeira no fim.
+    `resumo.txt` em `chave=valor`, com `otimo` e `gap_percentual` só
+    quando há ótimo.
+  - **Testes sem framework externo** (`tests/Assercoes.hpp`), um
+    executável por módulo registrado no CTest. **Build** em CMake com
+    Ninja, C++17, Release por padrão e `-static` no MinGW.
+- **Alternativas consideradas**: calcular a distância sob demanda —
+  economiza memória O(N²), mas repete `sqrt` milhões de vezes; com N =
+  1000 a matriz ocupa só ~8 MB. Matriz achatada (`vector<double>` com
+  `i*N + j`) — mais amigável ao cache, mas menos legível; a interface
+  permite trocar depois sem afetar ninguém. `ArgParser` preenchendo
+  `Parametros` diretamente — acoplaria A a C. Rota em formato longo
+  (`epoca,posicao,cidade`) — N linhas por snapshot, arquivo muito maior
+  no bônus. GoogleTest/Catch2 — exigiria baixar dependência e poderia
+  brigar com o link estático, sem ganho para testes deste tamanho.
+- **Consequências**: memória O(N²) limita na prática a uns 5000 pontos
+  (~200 MB). Os testes cobrem os invariantes que, se quebrados, fariam o
+  AG convergir silenciosamente para a resposta errada (ciclo fechado,
+  ótimo de referência, sentido da aptidão, matriz simétrica) e o formato
+  exato de cada arquivo. Os executáveis `main.cpp`/`experimentos.cpp`
+  estão comentados no `CMakeLists.txt` até C implementá-los. No Windows,
+  o build precisa ser feito pelo PowerShell (pelo Git Bash o g++ do
+  MSYS2 falha sem mensagem).
+- **Data**: 2026-10-23
