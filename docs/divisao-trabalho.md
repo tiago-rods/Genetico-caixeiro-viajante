@@ -39,13 +39,6 @@ Início em 05/10/2026, entrega em 28/10/2026.
   arestas.
 - **Entrega primeiro (dias 1–2):** os `.hpp` com as assinaturas e o formato
   dos CSVs, porque B, C e D dependem disso.
-- **Status (23/10): implementado e testado** — `core/` (`Ponto`,
-  `Cenario`, `Distancia` com aptidão), `io/` (`ArgParser`, `CsvWriter`),
-  `CMakeLists.txt` compilando A + B e `.gitignore`. Testes automáticos
-  (`testes_core`, `testes_io`) passando no CTest. Formato dos arquivos de
-  saída no `README.md` ("Como Rodar") e decisões na entrada 005 de
-  `documentacao-decisoes.md`. Para C: descomentar `tsp_ag` e
-  `experimentos` no `CMakeLists.txt` quando os `main()` existirem.
 
 ### Pessoa B — Representação e operadores
 - Feito: permutação de índices; torneio de tamanho `k`; ERX (prioriza arestas comuns aos dois pais, depois o menor grau); mutação por inversão (equivale a um 2-opt aleatório).

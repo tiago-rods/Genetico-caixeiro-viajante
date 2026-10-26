@@ -4,17 +4,24 @@ saida_exemplo/
 
 # Build do CMake (gerado, cada um compila na sua máquina)
 build/
-out/
-CMakeUserPresets.json
+*.exe
+*.o
 
-# Saídas das execuções (CSVs, resumo, figuras): regeneráveis a partir da seed
-resultados/
+# saídas das execuções (CSVs, resumos, figuras) — regeneráveis com os executáveis
+saidas/
 
-# Python (viz/)
+# Python
 __pycache__/
-*.pyc
 .venv/
 
-# Sistema
-Thumbs.db
-.DS_Store
+# editores e material da disciplina
+.vscode/
+.idea/
+cmake-build-*/
+docs/SIAM___Geneticos.pdf
+
+# editores e material da disciplina
+.vscode/
+.idea/
+cmake-build-*/
+docs/SIAM___Geneticos.pdf

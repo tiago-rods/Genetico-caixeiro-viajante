@@ -1,89 +1,86 @@
 #include "tsp/io/CsvWriter.hpp"
 
-#include <fstream>
-#include <iomanip>   // fixed, setprecision
-#include <locale>
-#include <stdexcept> // runtime_error
+#include <iomanip>
+#include <sstream>
 
 namespace tsp::io {
+
     namespace {
-        /* Abre o arquivo já no formato combinado com o bloco D:
-        locale clássico ("C") garante ponto decimal mesmo se alguém trocar o locale global,
-        fixed + 6 casas evita notação científica (1e-05), que complicaria a leitura */
-        std::ofstream abrir(const std::filesystem::path& arquivo) {
-            if (arquivo.has_parent_path()) std::filesystem::create_directories(arquivo.parent_path());
-
-            std::ofstream saida(arquivo);
-            if (!saida.is_open()) throw std::runtime_error("nao foi possivel abrir " + arquivo.string());
-
-            saida.imbue(std::locale::classic());
-            saida << std::fixed << std::setprecision(6);
-            return saida;
-        }
-
-        // ofstream não lança exceção sozinho: confere no fim se alguma escrita falhou (ex.: disco cheio)
-        void conferir(const std::ofstream& saida, const std::filesystem::path& arquivo) {
-            if (!saida) throw std::runtime_error("erro ao escrever " + arquivo.string());
-        }
-    }
-
-    void escreverPontos(const std::filesystem::path& arquivo, const std::vector<core::Ponto>& pontos) {
-        std::ofstream saida = abrir(arquivo);
-        saida << "indice,x,y\n";
-        for (std::size_t i = 0; i < pontos.size(); ++i) {
-            saida << i << ',' << pontos[i].x << ',' << pontos[i].y << '\n';
-        }
-        conferir(saida, arquivo);
-    }
-
-    void escreverHistorico(const std::filesystem::path& arquivo, const std::vector<RegistroEpoca>& historico) {
-        std::ofstream saida = abrir(arquivo);
-        saida << "epoca,melhor,media,pior,tempo_ms\n";
-        for (const RegistroEpoca& r : historico) {
-            saida << r.epoca << ',' << r.melhorDistancia << ',' << r.mediaDistancia << ','
-                  << r.piorDistancia << ',' << r.tempoMs << '\n';
-        }
-        conferir(saida, arquivo);
-    }
-
-    void escreverRotas(const std::filesystem::path& arquivo, const std::vector<SnapshotRota>& snapshots) {
-        std::ofstream saida = abrir(arquivo);
-        saida << "epoca,distancia,rota\n";
-        for (const SnapshotRota& s : snapshots) {
-            saida << s.epoca << ',' << s.distancia << ',';
-            // cidades separadas por espaço, numa coluna só: vírgula aqui quebraria o CSV
-            for (std::size_t i = 0; i < s.rota.size(); ++i) {
-                if (i > 0) saida << ' ';
-                saida << s.rota[i];
+        // Abre pra escrita com precisão suficiente pras distâncias e sem notação local
+        // (o locale padrão "C" garante ponto decimal, que é o que o pandas/numpy esperam)
+        void abrir(std::ofstream& arquivo, const std::filesystem::path& caminho) {
+            arquivo.open(caminho);
+            if (!arquivo) {
+                throw std::runtime_error("nao foi possivel abrir '" + caminho.string() + "' para escrita");
             }
-            saida << '\n';
+            arquivo << std::setprecision(12);
         }
-        conferir(saida, arquivo);
     }
 
-    void escreverResumo(const std::filesystem::path& arquivo, const Resumo& resumo) {
-        std::ofstream saida = abrir(arquivo);
-        // chave=valor: legível a olho e trivial de ler no Python (split no '=')
-        saida << "cenario=" << resumo.cenario << '\n'
-              << "num_cidades=" << resumo.numCidades << '\n'
-              << "seed=" << resumo.seed << '\n'
-              << "epocas=" << resumo.epocas << '\n'
-              << "melhor_distancia=" << resumo.melhorDistancia << '\n';
-
-        if (resumo.otimo) {
-            // gap = quanto a melhor rota encontrada ficou acima do ótimo, em %
-            double gap = (resumo.melhorDistancia - *resumo.otimo) / *resumo.otimo * 100.0;
-            saida << "otimo=" << *resumo.otimo << '\n'
-                  << "gap_percentual=" << gap << '\n';
+    CsvWriter::CsvWriter(const std::filesystem::path& caminho, const std::vector<std::string>& cabecalho)
+        : colunas_(cabecalho.size()) {
+        abrir(arquivo_, caminho);
+        for (std::size_t i = 0; i < cabecalho.size(); ++i) {
+            arquivo_ << (i == 0 ? "" : ",") << cabecalho[i];
         }
+        arquivo_ << '\n';
+    }
 
-        saida << "tempo_total_ms=" << resumo.tempoTotalMs << '\n'
-              << "epoca_ultima_melhora=" << resumo.epocaUltimaMelhora << '\n'
-              << "tempo_ate_ultima_melhora_ms=" << resumo.tempoAteUltimaMelhoraMs << '\n';
-
-        for (const auto& [chave, valor] : resumo.parametros) {
-            saida << chave << '=' << valor << '\n';
+    std::string rotaComoTexto(const std::vector<int>& rota) {
+        std::ostringstream texto;
+        for (std::size_t i = 0; i < rota.size(); ++i) {
+            texto << (i == 0 ? "" : " ") << rota[i];
         }
-        conferir(saida, arquivo);
+        return texto.str();
+    }
+
+    void gravarPontos(const std::filesystem::path& caminho, const std::vector<core::Ponto>& pontos) {
+        CsvWriter csv(caminho, {"indice", "x", "y"});
+        for (std::size_t i = 0; i < pontos.size(); ++i) {
+            csv.linha(i, pontos[i].x, pontos[i].y);
+        }
+    }
+
+    void gravarHistorico(const std::filesystem::path& caminho, const std::vector<algoritmo::EstatisticaGeracao>& historico) {
+        CsvWriter csv(caminho, {"geracao", "melhor", "media", "pior", "desvio", "diversidade", "tempo_ms"});
+        for (const auto& e : historico) {
+            csv.linha(e.geracao, e.melhor, e.media, e.pior, e.desvioPadrao, e.diversidade, e.tempoMs);
+        }
+    }
+
+    void gravarRotas(const std::filesystem::path& caminho, const std::vector<algoritmo::MelhoriaRota>& melhorias) {
+        CsvWriter csv(caminho, {"geracao", "distancia", "tempo_ms", "rota"});
+        for (const auto& m : melhorias) {
+            csv.linha(m.geracao, m.distancia, m.tempoMs, rotaComoTexto(m.rota));
+        }
+    }
+
+    void gravarResumo(const std::filesystem::path& caminho, const core::Cenario& cenario, std::uint32_t seedPontos,
+                      const algoritmo::Parametros& p, const algoritmo::Resultado& r) {
+        std::ofstream arquivo;
+        abrir(arquivo, caminho);
+
+        arquivo << "cenario: " << cenario.nome << '\n'
+                << "pontos: " << cenario.pontos.size() << '\n'
+                << "seed_pontos: " << seedPontos << '\n'
+                << "seed: " << p.seed << '\n'
+                << "populacao: " << p.tamanhoPopulacao << '\n'
+                << "taxa_cruzamento: " << p.taxaCruzamento << '\n'
+                << "taxa_mutacao: " << p.taxaMutacao << '\n'
+                << "torneio: " << p.tamanhoTorneio << '\n'
+                << "elite: " << p.tamanhoElite << '\n'
+                << "max_geracoes: " << p.maxGeracoes << '\n'
+                << "max_estagnacao: " << p.maxEstagnacao << '\n'
+                << "melhor_distancia: " << r.melhorDistancia << '\n';
+        if (cenario.otimo) {
+            arquivo << "otimo: " << *cenario.otimo << '\n'
+                    << "gap_percentual: " << core::gapPercentual(r.melhorDistancia, *cenario.otimo) << '\n';
+        }
+        arquivo << "geracoes: " << r.geracoes << '\n'
+                << "motivo_parada: " << algoritmo::nomeMotivo(r.motivo) << '\n'
+                << "geracao_ultima_melhora: " << r.geracaoUltimaMelhora << '\n'
+                << "tempo_total_s: " << r.tempoTotalMs / 1000.0 << '\n'
+                << "tempo_ate_ultima_melhora_s: " << r.tempoUltimaMelhoraMs / 1000.0 << '\n'
+                << "melhor_rota: " << rotaComoTexto(r.melhorRota) << '\n';
     }
 }
