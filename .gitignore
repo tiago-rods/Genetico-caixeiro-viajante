@@ -20,8 +20,7 @@ __pycache__/
 cmake-build-*/
 docs/SIAM___Geneticos.pdf
 
-# editores e material da disciplina
-.vscode/
-.idea/
-cmake-build-*/
-docs/SIAM___Geneticos.pdf
+# Figuras, GIFs e marcos gerados em docs/ (regeneráveis com viz/)
+docs/**/*.png
+docs/**/*.gif
+docs/**/*.txt
