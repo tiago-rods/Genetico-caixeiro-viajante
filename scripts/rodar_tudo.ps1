@@ -1,26 +1,33 @@
 ﻿<#
 .SYNOPSIS
-    Compila o projeto, roda os cenários e gera as figuras.
+    Compila o projeto, roda os cenários do relatório e gera as figuras.
 
 .DESCRIPTION
-    Sem -Exemplo: compila com CMake + Ninja (g++ do MSYS2), roda cada cenário
-    com o executável principal, roda a varredura de experimentos e gera as
-    figuras com `uv run`. Tudo vai para saida/, e as figuras são copiadas
-    para docs/figuras/ (é para lá que o relatório aponta).
+    1. Compila com CMake + Ninja (g++ do MSYS2) e roda os testes (ctest).
+    2. Roda o build/tsp.exe em cada cenário, com os parâmetros padrão do AG:
+         - uniforme e círculo com N = 10 e N = 50, seeds 1 a $Seeds
+           (N = 50 usa os pontos de --seed-pontos 42, os mesmos das varreduras);
+         - círculo N = 100 com mutação 0, 0,5 e 1 (seed 1);
+         - bônus: círculo N = 100, 200 e 500 (seed 1), uma execução por vez.
+       Execuções que já têm resumo.txt são puladas (use -Refazer para rodar de novo).
+    3. Gera as figuras com `uv run`:
+         viz/plotar.py              curva, grade de rotas, GIF e gap (seed 1 e bônus)
+         viz/tabela_seeds.py        média ± desvio das seeds
+         viz/comparar.py            mutação baixa × alta
+         viz/plotar_experimentos.py varreduras da Pessoa C (docs/experimentos/)
+    4. Copia figuras e tabelas para docs/figuras/ (é para lá que o relatório aponta).
 
-    Com -Exemplo: não compila nem roda o C++. Gera dados falsos em
-    saida_exemplo/ (viz/gerar_exemplo.py) e faz as figuras. Serve para testar
-    os gráficos antes de o executável existir.
+    O experimentos.exe não é rodado aqui: as varreduras levam horas e os CSVs já estão
+    em docs/experimentos/ (os comandos estão no README).
 
-    Executáveis esperados (proposta em docs/divisao-trabalho.md):
-      build/tsp.exe           um cenário por execução (src/main.cpp)
-      build/experimentos.exe  varredura; grava <saida>/experimentos.csv
+    Com -Exemplo: não compila nem roda o C++. Gera dados falsos em saida_exemplo/
+    (viz/gerar_exemplo.py) e faz as figuras, sem copiar nada para docs/figuras/.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\rodar_tudo.ps1 -Exemplo
+    powershell -ExecutionPolicy Bypass -File scripts\rodar_tudo.ps1
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\rodar_tudo.ps1 -SemGif -ArgsAG '--populacao','200'
+    powershell -ExecutionPolicy Bypass -File scripts\rodar_tudo.ps1 -SemBonus -SemGif
 #>
 [CmdletBinding()]
 param(
@@ -28,13 +35,13 @@ param(
     [switch]$Exemplo,
     # Não gera os GIFs (mais rápido).
     [switch]$SemGif,
-    # Não roda o círculo com N grande.
+    # Não roda o círculo com N grande (~15 min com N = 500).
     [switch]$SemBonus,
-    # Não roda a varredura de experimentos.
-    [switch]$SemExperimentos,
-    # Argumentos extras passados a todas as execuções do tsp.exe.
+    # Roda de novo as execuções que já existem.
+    [switch]$Refazer,
+    # Argumentos extras passados a todas as execuções do tsp.exe (ex.: '--populacao','200').
     [string[]]$ArgsAG = @(),
-    [int]$Seed = 1,
+    [int]$Seeds = 10,
     [string]$Build = 'build',
     [string]$Saida = 'saida'
 )
@@ -42,25 +49,18 @@ param(
 $ErrorActionPreference = 'Stop'
 $Raiz = Split-Path -Parent $PSScriptRoot
 
-# Cenários do relatório: N <= 10 (compara com força bruta) e N ~ 30-50.
+# Cenários do relatório: N <= 10 (compara com a força bruta) e N = 50.
 $Cenarios = @(
     @{ cenario = 'uniforme'; n = 10 },
-    @{ cenario = 'uniforme'; n = 40 },
+    @{ cenario = 'uniforme'; n = 50 },
     @{ cenario = 'circulo'; n = 10 },
-    @{ cenario = 'circulo'; n = 40 }
+    @{ cenario = 'circulo'; n = 50 }
 )
-# Bônus: círculo com N grande; rotas.csv só a cada k épocas.
-$Bonus = @(
-    @{ cenario = 'circulo'; n = 100; intervalo = 5 },
-    @{ cenario = 'circulo'; n = 500; intervalo = 20 },
-    @{ cenario = 'circulo'; n = 1000; intervalo = 50 }
-)
-# Evidência da Pessoa C: a mesma execução com mutação baixa e alta.
-# Os valores são provisórios; a Pessoa C ajusta.
-$Mutacao = @(
-    @{ cenario = 'circulo'; n = 40; sufixo = 'mutbaixa'; extra = @('--taxa-mutacao', '0.01') },
-    @{ cenario = 'circulo'; n = 40; sufixo = 'mutalta'; extra = @('--taxa-mutacao', '0.5') }
-)
+# Evidência da mutação (Pessoa C): mesma execução com mutação 0, padrão e 1.
+$Mutacoes = @('0', '0.5', '1')
+$NMutacao = 100
+# Bônus: círculo com N grande.
+$Bonus = @(100, 200, 500)
 
 function Invocar {
     # Roda um programa externo e para se ele falhar.
@@ -86,6 +86,15 @@ function Etapa([string]$Texto) {
     Write-Host "== $Texto" -ForegroundColor Cyan
 }
 
+function Rodar([string]$Pasta, [string[]]$Argumentos) {
+    # Uma execução do tsp; só a última linha de cada época impressa (--log-cada) vai para a tela.
+    if (-not $Refazer -and (Test-Path (Join-Path $Pasta 'resumo.txt'))) {
+        Write-Host "  já existe: $Pasta" -ForegroundColor DarkGray
+        return
+    }
+    Invocar $script:tsp ($Argumentos + @('--saida', $Pasta, '--log-cada', '1000') + $ArgsAG)
+}
+
 Push-Location $Raiz
 $relogio = [Diagnostics.Stopwatch]::StartNew()
 try {
@@ -94,93 +103,93 @@ try {
     if ($Exemplo) {
         $pastaSaida = 'saida_exemplo'
         Etapa "Gerando dados de EXEMPLO em $pastaSaida/"
+        if (Test-Path $pastaSaida) { Remove-Item -Recurse -Force $pastaSaida }  # só dados falsos
         Invocar 'uv' @('run', 'viz/gerar_exemplo.py', '--saida', $pastaSaida)
+        $pastasFiguras = @(Get-ChildItem $pastaSaida -Directory | ForEach-Object { Join-Path $pastaSaida $_.Name })
+        $pastasSeeds = $pastasFiguras
+        $pastasMutacao = @()
     }
     else {
         $pastaSaida = $Saida
 
         Etapa 'Compilando'
-        if (-not (Select-String -Path 'CMakeLists.txt' -Pattern 'add_executable' -Quiet)) {
-            throw ("CMakeLists.txt ainda não define executáveis (bloco da Pessoa A). " +
-                   "Para testar só os gráficos: rodar_tudo.ps1 -Exemplo")
-        }
+        if (Test-Path 'C:\msys64\ucrt64\bin') { $env:PATH = "C:\msys64\ucrt64\bin;$env:PATH" }
         Exigir 'cmake' 'Instale pelo MSYS2: pacman -S mingw-w64-ucrt-x86_64-cmake'
         Exigir 'ninja' 'Instale pelo MSYS2: pacman -S mingw-w64-ucrt-x86_64-ninja'
         Exigir 'g++' 'Instale pelo MSYS2: pacman -S mingw-w64-ucrt-x86_64-gcc'
-        Invocar 'cmake' @('-S', '.', '-B', $Build, '-G', 'Ninja',
-                          '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_CXX_COMPILER=g++')
+        Invocar 'cmake' @('-S', '.', '-B', $Build, '-G', 'Ninja')
         Invocar 'cmake' @('--build', $Build)
+        Invocar 'ctest' @('--test-dir', $Build, '--output-on-failure')
+        $script:tsp = Join-Path $Build 'tsp.exe'
 
-        $tsp = Join-Path $Build 'tsp.exe'
-        if (-not (Test-Path $tsp)) {
-            throw "Não achei $tsp. Confira o nome do executável no CMakeLists.txt (proposta: tsp)."
-        }
-
-        Etapa 'Rodando os cenários'
-        $lista = $Cenarios + $Mutacao
-        if (-not $SemBonus) { $lista += $Bonus }
-        foreach ($c in $lista) {
-            $nome = "$($c.cenario)_n$($c.n)_s$Seed"
-            if ($c.sufixo) { $nome += "_$($c.sufixo)" }
-            $pasta = Join-Path $pastaSaida $nome
-            $argumentos = @('--cenario', $c.cenario, '--n', "$($c.n)", '--seed', "$Seed",
-                            '--saida', $pasta)
-            if ($c.intervalo) { $argumentos += @('--intervalo-rotas', "$($c.intervalo)") }
-            $argumentos += $ArgsAG
-            if ($c.extra) { $argumentos += $c.extra }  # por último, para valer sobre ArgsAG
-            Invocar $tsp $argumentos
-        }
-
-        if (-not $SemExperimentos) {
-            Etapa 'Rodando a varredura de experimentos'
-            $exp = Join-Path $Build 'experimentos.exe'
-            if (Test-Path $exp) {
-                Invocar $exp @('--saida', $pastaSaida)
+        Etapa "Rodando os cenários do relatório ($Seeds seeds)"
+        $pastasFiguras = @()
+        $pastasSeeds = @()
+        foreach ($c in $Cenarios) {
+            foreach ($s in 1..$Seeds) {
+                $pasta = Join-Path $pastaSaida "$($c.cenario)_n$($c.n)_s$s"
+                Rodar $pasta @('--cenario', $c.cenario, '--n', "$($c.n)", '--seed', "$s")
+                $pastasSeeds += $pasta
+                if ($s -eq 1) { $pastasFiguras += $pasta }
             }
-            else {
-                Write-Warning "Não achei $exp (bloco da Pessoa C). Pulando a varredura."
+        }
+
+        Etapa "Rodando o círculo N = $NMutacao com mutação $($Mutacoes -join ', ')"
+        $pastasMutacao = @()
+        foreach ($m in $Mutacoes) {
+            $pasta = Join-Path $pastaSaida "circulo_n${NMutacao}_s1_mut$m"
+            Rodar $pasta @('--cenario', 'circulo', '--n', "$NMutacao", '--seed', '1', '--mutacao', $m)
+            $pastasMutacao += $pasta
+        }
+
+        if (-not $SemBonus) {
+            Etapa "Bônus: círculo N = $($Bonus -join ', ')"
+            foreach ($n in $Bonus) {
+                $pasta = Join-Path $pastaSaida "circulo_n${n}_s1"
+                Rodar $pasta @('--cenario', 'circulo', '--n', "$n", '--seed', '1')
+                $pastasFiguras += $pasta
             }
         }
     }
 
     Etapa 'Gerando as figuras'
-    $pastas = @(Get-ChildItem -Path $pastaSaida -Directory |
-        Where-Object { Test-Path (Join-Path $_.FullName 'historico.csv') } |
-        ForEach-Object { Join-Path $pastaSaida $_.Name })
-    if ($pastas.Count -eq 0) { throw "Nenhuma execução (historico.csv) em $pastaSaida/." }
-    $argsPlot = @('run', 'viz/plotar.py') + $pastas
+    $argsPlot = @('run', 'viz/plotar.py') + $pastasFiguras
     if (-not $SemGif) { $argsPlot += '--gif' }
     Invocar 'uv' $argsPlot
 
-    $csv = Join-Path $pastaSaida 'experimentos.csv'
-    if (Test-Path $csv) {
-        Invocar 'uv' @('run', 'viz/plotar_experimentos.py', $csv)
+    $pastaFigurasGerais = Join-Path $pastaSaida 'figuras'
+    Invocar 'uv' (@('run', 'viz/tabela_seeds.py') + $pastasSeeds +
+                  @('--saida', (Join-Path $pastaFigurasGerais 'media_desvio.md')))
+    if ($pastasMutacao.Count -gt 0) {
+        Invocar 'uv' (@('run', 'viz/comparar.py') + $pastasMutacao +
+                      @('--saida', (Join-Path $pastaFigurasGerais "mutacao_circulo_n$NMutacao.png"),
+                        '--titulo', "Círculo, N = ${NMutacao}: mutação baixa × padrão × alta"))
     }
-    else {
-        Write-Warning "Sem $csv; pulando as figuras dos experimentos."
+    if (-not $Exemplo) {
+        Invocar 'uv' @('run', 'viz/plotar_experimentos.py', '--saida',
+                       (Join-Path $pastaSaida 'experimentos\figuras'))
     }
 
-    # O relatório aponta para docs/figuras/, porque saida/ não vai para o git.
     if ($Exemplo) {
         Write-Host "Modo -Exemplo: nada é copiado para docs/figuras/."
     }
     else {
         Etapa 'Copiando as figuras para docs/figuras/'
         $destino = Join-Path 'docs' 'figuras'
-        $copias = @($pastas | ForEach-Object { @{ de = (Join-Path $_ 'figuras'); para = (Split-Path $_ -Leaf) } })
-        $copias += @{ de = (Join-Path $pastaSaida 'figuras'); para = 'experimentos' }
+        $copias = @($pastasFiguras | ForEach-Object {
+                @{ de = (Join-Path $_ 'figuras'); para = (Join-Path $destino (Split-Path $_ -Leaf)) } })
+        $copias += @{ de = (Join-Path $pastaSaida 'experimentos\figuras'); para = (Join-Path $destino 'experimentos') }
+        $copias += @{ de = $pastaFigurasGerais; para = $destino }
         foreach ($c in $copias) {
             if (Test-Path $c.de) {
-                $alvo = Join-Path $destino $c.para
-                New-Item -ItemType Directory -Force $alvo | Out-Null
-                Copy-Item (Join-Path $c.de '*') $alvo -Force
-                Write-Host "  $($c.de) -> $alvo"
+                New-Item -ItemType Directory -Force $c.para | Out-Null
+                Copy-Item (Join-Path $c.de '*') $c.para -Force
+                Write-Host "  $($c.de) -> $($c.para)"
             }
         }
     }
 
-    Etapa ("Pronto em {0:N0} s. Figuras em {1}/*/figuras/ e {1}/figuras/" -f
-           $relogio.Elapsed.TotalSeconds, $pastaSaida)
+    Etapa ("Pronto em {0:N0} s." -f $relogio.Elapsed.TotalSeconds)
 }
 finally {
     Pop-Location

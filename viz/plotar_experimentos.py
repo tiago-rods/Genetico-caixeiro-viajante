@@ -2,19 +2,21 @@
 # requires-python = ">=3.11"
 # dependencies = ["matplotlib>=3.8", "numpy>=1.26", "pandas>=2.1"]
 # ///
-"""Figuras das varreduras do AG (experimentos.csv).
+"""Figuras dos experimentos de parâmetros da Pessoa C (`experimentos`).
 
 Uso (na raiz do repo):
-    uv run viz/plotar_experimentos.py saida/experimentos.csv [--saida PASTA]
+    uv run viz/plotar_experimentos.py [CSVs ou pastas...] [--saida PASTA]
 
-Grava em <pasta do csv>/figuras/ (ou em --saida):
-    mapa_calor_<cenario>_n<N>.png  média das seeds, população × mutação, um painel por cruzamento
-    erx_vs_ox.png                  seeds de cada cruzamento na melhor configuração dele
-    populacao_seeds.png            seeds por tamanho de população (melhor cruzamento e mutação)
-    media_desvio.md                tabela média ± desvio, pronta para o relatório
+Sem argumentos, lê docs/experimentos/*/varredura.csv e */estagnacao.csv.
+Grava em --saida (padrão saida/experimentos/figuras):
+    mapa_calor_<cenario>_n<N>.png  população × mutação, média das seeds por célula
+    populacao_seeds.png            gap de cada seed por população (mutação 0,5)
+    estagnacao.png                 perda e acertos por limite de estagnação (população 400)
+    erx_vs_ox.png                  só se o CSV tiver mais de um cruzamento (coluna `cruzamento`)
 
-Com a coluna `referencia` (proposta em docs/divisao-trabalho.md), as figuras
-usam o gap para ela, em %. Sem ela, usam a melhor distância.
+Gap: no círculo, o `gap_pct` do CSV (contra o ótimo). No uniforme, recalculado contra a
+referência 2-opt, como nas tabelas do README; o `gap_pct` do CSV usa a melhor distância
+do próprio experimento, que muda de um arquivo para outro.
 """
 
 from __future__ import annotations
@@ -26,62 +28,61 @@ import estilo  # liga o backend Agg antes do pyplot
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from estilo import AGUA, COR_CRUZAMENTO, SEQUENCIAL, SUPERFICIE, TINTA, TINTA_FRACA
+from estilo import AGUA, AZUL, COR_CRUZAMENTO, LARANJA, SEQUENCIAL, SUPERFICIE, TINTA, TINTA_2, TINTA_FRACA
 
-COLUNAS = [
-    "cenario", "n", "populacao", "taxa_mutacao", "cruzamento",
-    "seed", "melhor", "epocas", "tempo_s",
-]
+RAIZ = Path(__file__).resolve().parent.parent
+
+# Referência 2-opt + Or-opt (scripts/referencia_2opt.py, 300 reinícios) das instâncias
+# uniformes do `experimentos` (--seed-pontos 42). Os mesmos valores do README.
+REFERENCIA_2OPT_UNIFORME = {50: 616.535026766, 100: 821.640410398}
+
+TOLERANCIA_OTIMO = 1e-6  # gap (%) abaixo disso conta como ótimo atingido (kToleranciaOtimo)
+MUTACAO_PADRAO = 0.5
+POPULACAO_PADRAO = 400
 
 
 # ---------------------------------------------------------------- dados
 
-def carregar(caminho: Path) -> tuple[pd.DataFrame, bool]:
-    if not caminho.exists():
-        raise SystemExit(f"Erro: {caminho} não existe")
-    df = pd.read_csv(caminho)
-    falta = [c for c in COLUNAS if c not in df.columns]
-    if falta:
-        raise SystemExit(f"Erro: faltam as colunas {', '.join(falta)} em {caminho}")
+def achar_csvs(entradas: list[Path], nome: str) -> list[Path]:
+    if not entradas:
+        return sorted((RAIZ / "docs" / "experimentos").glob(f"*/{nome}"))
+    achados = []
+    for e in entradas:
+        if e.is_dir():
+            achados += sorted(e.glob(f"**/{nome}"))
+        elif e.name == nome:
+            achados.append(e)
+    return achados
+
+
+def carregar_varredura(caminhos: list[Path]) -> pd.DataFrame:
+    df = pd.concat([pd.read_csv(c) for c in caminhos], ignore_index=True)
+    if "cruzamento" not in df.columns:
+        df["cruzamento"] = "erx"  # o `experimentos` só roda o ERX
     df["cruzamento"] = df["cruzamento"].str.lower()
-    tem_ref = "referencia" in df.columns and df["referencia"].notna().all()
-    df["metrica"] = (df["melhor"] / df["referencia"] - 1) * 100 if tem_ref else df["melhor"]
-    return df, tem_ref
+    chaves = ["cenario", "n", "cruzamento", "populacao", "taxa_mutacao", "seed"]
+    df = df.drop_duplicates(chaves).copy()
+
+    df["gap"] = df["gap_pct"]
+    for n, ref in REFERENCIA_2OPT_UNIFORME.items():
+        sel = (df["cenario"] == "uniforme") & (df["n"] == n)
+        df.loc[sel, "gap"] = ((df.loc[sel, "melhor_distancia"] / ref - 1) * 100).clip(lower=0)
+    sem_ref = df[(df["cenario"] == "uniforme") & ~df["n"].isin(list(REFERENCIA_2OPT_UNIFORME))]
+    if len(sem_ref):
+        print(f"  aviso: uniforme com N = {sorted(sem_ref['n'].unique())} sem referência 2-opt; "
+              "usando o gap_pct do CSV")
+    df["atingiu"] = df["gap_pct"] < TOLERANCIA_OTIMO
+    return df
 
 
-def rotulo_metrica(cenario: str, tem_ref: bool) -> str:
-    if not tem_ref:
-        return "melhor distância"
-    if cenario == "circulo":
-        return "gap para o ótimo (%)"
-    return "diferença para o vizinho mais próximo (%)"
-
-
-def casas_decimais(vmin: float, vmax: float, tem_ref: bool) -> int:
-    """Gap com 1 casa; distância com 3 algarismos significativos, iguais na figura toda."""
-    if tem_ref:
-        return 1
-    maior = max(abs(vmin), abs(vmax), 1e-12)
-    return max(0, 2 - int(np.floor(np.log10(maior))))
+def rotulo_gap(cenario: str) -> str:
+    return "gap para o ótimo (%)" if cenario == "circulo" else "gap para a referência 2-opt (%)"
 
 
 def ordenar_cruzamentos(cruzamentos) -> list[str]:
     presentes = set(cruzamentos)
     conhecidos = [c for c in COR_CRUZAMENTO if c in presentes]
     return conhecidos + sorted(presentes - set(conhecidos))
-
-
-def cor(cruzamento: str) -> str:
-    return COR_CRUZAMENTO.get(cruzamento, AGUA)
-
-
-def melhor_config(sub: pd.DataFrame, chaves: list[str]) -> tuple:
-    """Configuração com a menor média da métrica sobre as seeds."""
-    return sub.groupby(chaves)["metrica"].mean().idxmin()
-
-
-def marcar_exemplo(fig, caminho: Path) -> None:
-    estilo.marcar_exemplo(fig, "exemplo" in str(caminho).lower())
 
 
 def caixas(ax, dados, cores, posicoes) -> None:
@@ -105,62 +106,123 @@ def caixas(ax, dados, cores, posicoes) -> None:
 
 # ---------------------------------------------------------------- figuras
 
-def mapa_calor(df, cenario, n, tem_ref, destino: Path, origem: Path) -> None:
-    sub = df[(df["cenario"] == cenario) & (df["n"] == n)]
-    cruzamentos = ordenar_cruzamentos(sub["cruzamento"].unique())
-    tabelas = {
-        c: sub[sub["cruzamento"] == c].pivot_table(
-            index="populacao", columns="taxa_mutacao", values="metrica", aggfunc="mean"
-        )
-        for c in cruzamentos
-    }
-    vmin = min(np.nanmin(t.to_numpy()) for t in tabelas.values())
-    vmax = max(np.nanmax(t.to_numpy()) for t in tabelas.values())
-    seeds = sub.groupby(["cruzamento", "populacao", "taxa_mutacao"]).size().max()
-    casas = casas_decimais(vmin, vmax, tem_ref)
+def mapa_calor(df, cenario, n, destino: Path) -> None:
+    """Cor = gap médio. No círculo, o texto é quantas seeds acertaram o ótimo."""
+    sub = df[(df["cenario"] == cenario) & (df["n"] == n) & (df["cruzamento"] == "erx")]
+    gap = sub.pivot_table(index="populacao", columns="taxa_mutacao", values="gap", aggfunc="mean")
+    acertos = sub.pivot_table(index="populacao", columns="taxa_mutacao", values="atingiu", aggfunc="sum")
+    seeds = sub.groupby(["populacao", "taxa_mutacao"]).size().max()
+    valores = gap.to_numpy()
+    vmin, vmax = np.nanmin(valores), np.nanmax(valores)
+    norma = plt.matplotlib.colors.PowerNorm(0.5, vmin=0, vmax=vmax)  # gaps grandes não apagam o resto
 
-    fig, eixos = plt.subplots(
-        1, len(cruzamentos), figsize=(4.3 * len(cruzamentos) + 1.3, 4.0),
-        squeeze=False, constrained_layout=True,
-    )
-    imagem = None
-    for k, (ax, c) in enumerate(zip(eixos[0], cruzamentos)):
-        tabela = tabelas[c]
-        valores = tabela.to_numpy()
-        imagem = ax.imshow(valores, cmap=SEQUENCIAL, vmin=vmin, vmax=vmax,
-                           origin="lower", aspect="auto")
-        ax.set_xticks(range(len(tabela.columns)), [f"{v:g}" for v in tabela.columns])
-        ax.set_yticks(range(len(tabela.index)), [str(v) for v in tabela.index])
-        ax.set_xlabel("taxa de mutação")
-        if k == 0:
-            ax.set_ylabel("população")
-        ax.grid(False)
-        for lado in ax.spines.values():
-            lado.set_visible(False)
-        melhor = np.unravel_index(np.nanargmin(valores), valores.shape)
-        for (i, j), v in np.ndenumerate(valores):
-            if np.isnan(v):
-                continue
-            fracao = (v - vmin) / (vmax - vmin) if vmax > vmin else 0
-            ax.text(j, i, f"{v:.{casas}f}", ha="center", va="center", fontsize=8.5,
-                    color=SUPERFICIE if fracao > 0.55 else TINTA,
-                    fontweight="bold" if (i, j) == melhor else "normal")
-        ax.set_title(c.upper(), fontsize=11)
+    fig, ax = plt.subplots(figsize=(1.05 * len(gap.columns) + 2.6, 0.62 * len(gap.index) + 1.8),
+                           constrained_layout=True)
+    imagem = ax.imshow(valores, cmap=SEQUENCIAL, norm=norma, origin="lower", aspect="auto")
+    ax.set_xticks(range(len(gap.columns)), [f"{v:g}" for v in gap.columns])
+    ax.set_yticks(range(len(gap.index)), [str(v) for v in gap.index])
+    ax.set_xlabel("taxa de mutação")
+    ax.set_ylabel("população")
+    ax.grid(False)
+    for lado in ax.spines.values():
+        lado.set_visible(False)
+    for (i, j), v in np.ndenumerate(valores):
+        if np.isnan(v):
+            continue
+        escuro = norma(v) > 0.55
+        pop, mut = gap.index[i], gap.columns[j]
+        padrao = pop == POPULACAO_PADRAO and mut == MUTACAO_PADRAO
+        if cenario == "circulo":
+            texto = f"{int(acertos.iloc[i, j])}/{seeds}"
+            if acertos.iloc[i, j] < seeds:
+                texto += f"\n({v:.1f}%)"
+        else:
+            texto = f"{v:.1f}"
+        ax.text(j, i, texto, ha="center", va="center", fontsize=8.5 if "\n" not in texto else 7.5,
+                color=SUPERFICIE if escuro else TINTA, fontweight="bold" if padrao else "normal")
+        if padrao:
+            ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, ec=LARANJA, lw=2))
 
-    barra = fig.colorbar(imagem, ax=eixos[0].tolist(), shrink=0.9)
-    barra.set_label(rotulo_metrica(cenario, tem_ref))
+    barra = fig.colorbar(imagem, ax=ax, shrink=0.9)
+    barra.set_label(f"{rotulo_gap(cenario)}, média")
     barra.outline.set_visible(False)
-    fig.suptitle(
-        f"{estilo.nome_execucao(cenario, n)}: média de {seeds} seeds por célula "
-        "(em negrito, a melhor)",
-        x=0.01, ha="left", fontsize=12, fontweight="semibold",
-    )
-    marcar_exemplo(fig, origem)
+    sub_titulo = (f"média de {seeds} seeds por célula; no círculo, quantas acertaram o ótimo"
+                  if cenario == "circulo" else f"gap médio de {seeds} seeds por célula")
+    estilo.titulo(ax, f"{estilo.nome_execucao(cenario, n)}: população × mutação",
+                  f"{sub_titulo} · contorno: padrão (pop. {POPULACAO_PADRAO}, mut. {MUTACAO_PADRAO:g})")
     fig.savefig(destino)
     plt.close(fig)
 
 
-def erx_vs_ox(df, tem_ref, destino: Path, origem: Path) -> None:
+def populacao_seeds(df, destino: Path) -> None:
+    # só o uniforme: no círculo quase todas as seeds ficam em gap 0 (ver o mapa de calor)
+    sel = df[(df["taxa_mutacao"] == MUTACAO_PADRAO) & (df["cruzamento"] == "erx")
+             & (df["cenario"] == "uniforme")]
+    combos = sorted(sel.groupby(["cenario", "n"]).groups, key=lambda c: (c[0] != "uniforme", c[1]))
+    fig, eixos = plt.subplots(1, len(combos), figsize=(4.2 * len(combos), 4.4), squeeze=False)
+    for ax, (cenario, n) in zip(eixos[0], combos):
+        sub = sel[(sel["cenario"] == cenario) & (sel["n"] == n)]
+        pops = sorted(sub["populacao"].unique())
+        dados = [sub[sub["populacao"] == p]["gap"].to_numpy() for p in pops]
+        cores = [LARANJA if p == POPULACAO_PADRAO else AZUL for p in pops]
+        posicoes = list(range(1, len(pops) + 1))
+        caixas(ax, dados, cores, posicoes)
+        ax.set_xticks(posicoes, [str(p) for p in pops])
+        ax.set_xlabel("população")
+        ax.set_ylabel(rotulo_gap(cenario))
+        ax.set_ylim(bottom=min(-0.5, ax.get_ylim()[0]))
+        ax.set_title(estilo.nome_execucao(cenario, n), fontsize=11)
+    fig.suptitle(f"Efeito da população com mutação {MUTACAO_PADRAO:g}: cada ponto é uma seed "
+                 f"(em laranja, o padrão {POPULACAO_PADRAO})",
+                 x=0.01, ha="left", fontsize=12, fontweight="semibold")
+    fig.tight_layout()
+    fig.savefig(destino)
+    plt.close(fig)
+
+
+def estagnacao(caminhos: list[Path], destino: Path) -> None:
+    df = pd.concat([pd.read_csv(c) for c in caminhos], ignore_index=True)
+    df = df[df["populacao"] == POPULACAO_PADRAO]
+    df["sem_perda"] = df["perda_pct"] < TOLERANCIA_OTIMO
+    resumo = df.groupby(["cenario", "n", "estagnacao"]).agg(
+        perda=("perda_pct", "mean"), sem_perda=("sem_perda", "sum"), execucoes=("seed", "size"),
+        parada=("geracao_parada", "mean")).reset_index()
+
+    fig, (ax_u, ax_c) = plt.subplots(1, 2, figsize=(11, 4.4))
+    cores = {50: AZUL, 100: LARANJA, 200: AGUA}
+    for n, sub in resumo[resumo["cenario"] == "uniforme"].groupby("n"):
+        ax_u.plot(sub["estagnacao"], sub["perda"], "o-", color=cores.get(n, TINTA_2), ms=4,
+                  label=f"N = {n}")
+    for n, sub in resumo[resumo["cenario"] == "circulo"].groupby("n"):
+        ax_c.plot(sub["estagnacao"], sub["sem_perda"], "o-", color=cores.get(n, TINTA_2), ms=4,
+                  label=f"N = {n}")
+    for ax in (ax_u, ax_c):
+        ax.set_xscale("log")
+        ax.set_xticks([25, 50, 100, 200, 300, 600, 1000, 2000],
+                      ["25", "50", "100", "200", "300", "600", "1000", "2000"])
+        ax.minorticks_off()
+        ax.set_xlabel("limite de estagnação (gerações sem melhora)")
+        for limite, texto in [(300, "padrão até N = 100"), (600, "padrão N = 200 (3·N)")]:
+            ax.axvline(limite, color=TINTA_FRACA, lw=1, ls=(0, (4, 3)), zorder=1)
+            ax.annotate(texto, xy=(limite, 0), xycoords=("data", "axes fraction"), xytext=(3, 4),
+                        textcoords="offset points", fontsize=8, color=TINTA_2, va="bottom", rotation=90)
+    ax_u.legend(loc="upper right", fontsize=9)
+    ax_c.legend(loc="lower right", fontsize=9)
+    execucoes = int(resumo["execucoes"].max())
+    ax_c.set_ylim(-0.3, execucoes + 0.5)
+    ax_u.set_ylim(bottom=0)
+    ax_u.set_ylabel("perda média (%)")
+    ax_c.set_ylabel(f"execuções sem perda (de {execucoes})")
+    estilo.titulo(ax_u, "Uniforme: perda ao parar", "rota no ponto de parada vs. a mesma execução longa")
+    estilo.titulo(ax_c, "Círculo: paradas no ótimo", "todas as execuções longas chegam ao ótimo exato")
+    fig.suptitle(f"Critério de parada (população {POPULACAO_PADRAO}, mutação {MUTACAO_PADRAO:g})",
+                 x=0.01, ha="left", fontsize=12, fontweight="semibold")
+    fig.tight_layout()
+    fig.savefig(destino)
+    plt.close(fig)
+
+
+def erx_vs_ox(df, destino: Path) -> None:
     combos = sorted(df.groupby(["cenario", "n"]).groups)
     fig, eixos = plt.subplots(1, len(combos), figsize=(4.4 * len(combos), 4.4), squeeze=False)
     for ax, (cenario, n) in zip(eixos[0], combos):
@@ -169,116 +231,58 @@ def erx_vs_ox(df, tem_ref, destino: Path, origem: Path) -> None:
         dados, rotulos = [], []
         for c in cruzamentos:
             sc = sub[sub["cruzamento"] == c]
-            pop, mut = melhor_config(sc, ["populacao", "taxa_mutacao"])
+            pop, mut = sc.groupby(["populacao", "taxa_mutacao"])["gap"].mean().idxmin()
             sel = sc[(sc["populacao"] == pop) & (sc["taxa_mutacao"] == mut)]
-            dados.append(sel["metrica"].to_numpy())
+            dados.append(sel["gap"].to_numpy())
             rotulos.append(f"{c.upper()}\npop. {pop} · mut. {mut:g}")
         posicoes = list(range(1, len(dados) + 1))
-        caixas(ax, dados, [cor(c) for c in cruzamentos], posicoes)
+        caixas(ax, dados, [COR_CRUZAMENTO.get(c, AGUA) for c in cruzamentos], posicoes)
         ax.set_xticks(posicoes, rotulos)
         ax.set_xlim(0.4, len(dados) + 0.6)
-        ax.set_ylabel(rotulo_metrica(cenario, tem_ref))
+        ax.set_ylabel(rotulo_gap(cenario))
         ax.set_title(estilo.nome_execucao(cenario, n), fontsize=11)
     fig.suptitle("ERX × OX: seeds na melhor configuração de cada cruzamento",
                  x=0.01, ha="left", fontsize=12, fontweight="semibold")
     fig.tight_layout()
-    marcar_exemplo(fig, origem)
     fig.savefig(destino)
     plt.close(fig)
-
-
-def populacao_seeds(df, tem_ref, destino: Path, origem: Path) -> None:
-    combos = sorted(df.groupby(["cenario", "n"]).groups)
-    fig, eixos = plt.subplots(1, len(combos), figsize=(4.8 * len(combos), 4.4), squeeze=False)
-    for ax, (cenario, n) in zip(eixos[0], combos):
-        sub = df[(df["cenario"] == cenario) & (df["n"] == n)]
-        cruz, _, mut = melhor_config(sub, ["cruzamento", "populacao", "taxa_mutacao"])
-        sel = sub[(sub["cruzamento"] == cruz) & (sub["taxa_mutacao"] == mut)]
-        pops = sorted(sel["populacao"].unique())
-        dados = [sel[sel["populacao"] == p]["metrica"].to_numpy() for p in pops]
-        posicoes = list(range(1, len(pops) + 1))
-        caixas(ax, dados, [cor(cruz)] * len(pops), posicoes)
-        ax.set_xticks(posicoes, [str(p) for p in pops])
-        ax.set_xlabel("população")
-        ax.set_ylabel(rotulo_metrica(cenario, tem_ref))
-        estilo.titulo(ax, estilo.nome_execucao(cenario, n), f"{cruz.upper()}, mutação {mut:g}")
-    fig.suptitle("Efeito da população: cada ponto é uma seed",
-                 x=0.01, ha="left", fontsize=12, fontweight="semibold")
-    fig.tight_layout()
-    marcar_exemplo(fig, origem)
-    fig.savefig(destino)
-    plt.close(fig)
-
-
-def tabela_media_desvio(df, tem_ref, destino: Path, origem: Path) -> None:
-    def md(serie, casas):
-        return f"{serie.mean():.{casas}f} ± {serie.std():.{casas}f}"
-
-    cab = ["Cenário", "N", "Cruzamento", "População", "Mutação", "Seeds", "Melhor distância"]
-    if tem_ref:
-        cab.append("Gap p/ referência (%)")
-    cab += ["Épocas", "Tempo (s)"]
-    linhas = []
-    for (cenario, n), sub in df.groupby(["cenario", "n"]):
-        for c in ordenar_cruzamentos(sub["cruzamento"].unique()):
-            sc = sub[sub["cruzamento"] == c]
-            pop, mut = melhor_config(sc, ["populacao", "taxa_mutacao"])
-            sel = sc[(sc["populacao"] == pop) & (sc["taxa_mutacao"] == mut)]
-            linha = [estilo.NOME_CENARIO.get(cenario, cenario), str(n), c.upper(), str(pop),
-                     f"{mut:g}", str(len(sel)), md(sel["melhor"], 4)]
-            if tem_ref:
-                linha.append(md(sel["metrica"], 2))
-            linha += [md(sel["epocas"], 0), md(sel["tempo_s"], 3)]
-            linhas.append(linha)
-
-    texto = ["# Média ± desvio por cenário", ""]
-    if "exemplo" in str(origem).lower():
-        texto += ["> **Dados de EXEMPLO (falsos).** Não usar no relatório.", ""]
-    texto += [
-        f"Gerado por `viz/plotar_experimentos.py` a partir de `{origem.as_posix()}`. "
-        "Cada linha usa a melhor configuração (menor média) daquele cruzamento. "
-        "Desvio-padrão amostral sobre as seeds.",
-        "",
-    ]
-    if tem_ref:
-        texto += [
-            "Referência: ótimo no círculo; vizinho mais próximo no uniforme "
-            "(negativo = o AG ficou melhor que o vizinho mais próximo).",
-            "",
-        ]
-    texto.append("| " + " | ".join(cab) + " |")
-    texto.append("|" + "---|" * len(cab))
-    texto += ["| " + " | ".join(l) + " |" for l in linhas]
-    destino.write_text("\n".join(texto) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------- main
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("csv", type=Path, help="caminho do experimentos.csv")
-    parser.add_argument("--saida", type=Path, help="pasta das figuras (padrão: <pasta do csv>/figuras)")
+    parser.add_argument("entradas", nargs="*", type=Path,
+                        help="varredura.csv, estagnacao.csv ou pastas (padrão: docs/experimentos)")
+    parser.add_argument("--saida", type=Path, default=Path("saida/experimentos/figuras"),
+                        help="pasta das figuras (padrão: saida/experimentos/figuras)")
     args = parser.parse_args()
-
-    df, tem_ref = carregar(args.csv)
-    pasta = args.saida or args.csv.parent / "figuras"
-    pasta.mkdir(parents=True, exist_ok=True)
+    args.saida.mkdir(parents=True, exist_ok=True)
     feitas = []
 
-    for cenario, n in sorted(df.groupby(["cenario", "n"]).groups):
-        nome = f"mapa_calor_{cenario}_n{n}.png"
-        mapa_calor(df, cenario, n, tem_ref, pasta / nome, args.csv)
-        feitas.append(nome)
-    erx_vs_ox(df, tem_ref, pasta / "erx_vs_ox.png", args.csv)
-    populacao_seeds(df, tem_ref, pasta / "populacao_seeds.png", args.csv)
-    tabela_media_desvio(df, tem_ref, pasta / "media_desvio.md", args.csv)
-    feitas += ["erx_vs_ox.png", "populacao_seeds.png", "media_desvio.md"]
+    varreduras = achar_csvs(args.entradas, "varredura.csv")
+    if varreduras:
+        df = carregar_varredura(varreduras)
+        for cenario, n in sorted(df.groupby(["cenario", "n"]).groups):
+            nome = f"mapa_calor_{cenario}_n{n}.png"
+            mapa_calor(df, cenario, n, args.saida / nome)
+            feitas.append(nome)
+        populacao_seeds(df, args.saida / "populacao_seeds.png")
+        feitas.append("populacao_seeds.png")
+        if df["cruzamento"].nunique() >= 2:
+            erx_vs_ox(df, args.saida / "erx_vs_ox.png")
+            feitas.append("erx_vs_ox.png")
+        else:
+            print("  aviso: só o ERX nos CSVs (o OX não existe ainda); erx_vs_ox.png não foi gerado")
+    else:
+        print("  aviso: nenhum varredura.csv encontrado")
 
-    if df["cruzamento"].nunique() < 2:
-        print("  aviso: só há um cruzamento no CSV; ERX × OX fica com uma caixa por cenário")
-    if not tem_ref:
-        print("  aviso: sem a coluna 'referencia'; as figuras usam a melhor distância")
-    print(f"  {pasta}: {', '.join(feitas)}")
+    estagnacoes = achar_csvs(args.entradas, "estagnacao.csv")
+    if estagnacoes:
+        estagnacao(estagnacoes, args.saida / "estagnacao.png")
+        feitas.append("estagnacao.png")
+
+    print(f"  {args.saida}: {', '.join(feitas)}")
 
 
 if __name__ == "__main__":
