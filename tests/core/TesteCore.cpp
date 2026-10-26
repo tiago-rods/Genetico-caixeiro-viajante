@@ -2,11 +2,14 @@
 #include <cmath>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "Verificacao.hpp"
+#include "genetico/VerificarPermutacao.hpp"
 #include "tsp/core/Cenario.hpp"
 #include "tsp/core/Distancia.hpp"
+#include "tsp/genetico/Individuo.hpp"
 
 using namespace tsp;
 using tsp::testes::verificar;
@@ -20,6 +23,16 @@ namespace {
         std::vector<int> rota(n);
         std::iota(rota.begin(), rota.end(), 0);
         return rota;
+    }
+
+    template <typename Funcao>
+    bool lanca(Funcao funcao) {
+        try {
+            funcao();
+        } catch (const std::invalid_argument&) {
+            return true;
+        }
+        return false;
     }
 }
 
@@ -67,6 +80,71 @@ int main() {
     verificar(core::aptidao(10.0) > core::aptidao(20.0), "rota mais curta tem aptidao maior");
 
     verificar(quaseIgual(core::gapPercentual(110.0, 100.0), 10.0), "gap percentual");
+
+    // ---- casos portados da branch pessoa-A ----
+
+    // distância euclidiana direto, sem passar pela matriz
+    verificar(quaseIgual(core::distanciaEuclidiana({0, 0}, {3, 4}), 5.0), "distancia (0,0)-(3,4) = 5 (triangulo 3-4-5)");
+    verificar(core::distanciaEuclidiana({2, 7}, {2, 7}) == 0.0, "distancia de um ponto a ele mesmo = 0");
+
+    // matriz inteira (não só um par): um erro no espelhamento deixaria metade das arestas valendo 0
+    {
+        std::mt19937 rng(42);
+        const core::Cenario cenario = core::gerarUniforme(20, 100.0, rng);
+        const core::MatrizDistancias m(cenario.pontos);
+        bool simetrica = true, diagonalZero = true, confere = true;
+        for (int i = 0; i < m.tamanho(); ++i) {
+            diagonalZero = diagonalZero && m(i, i) == 0.0;
+            for (int j = 0; j < m.tamanho(); ++j) {
+                simetrica = simetrica && m(i, j) == m(j, i);
+                confere = confere && quaseIgual(m(i, j), core::distanciaEuclidiana(cenario.pontos[i], cenario.pontos[j]));
+            }
+        }
+        verificar(m.tamanho() == 20, "matriz tem tamanho n");
+        verificar(simetrica && diagonalZero, "matriz inteira simetrica com diagonal zero (20 pontos)");
+        verificar(confere, "cada celula da matriz confere com distanciaEuclidiana");
+    }
+
+    // círculo: geometria dos pontos e ótimo contra valores conhecidos
+    {
+        const double raio = 50.0;
+        const core::Cenario circulo = core::gerarCirculo(8, raio);
+        bool todosNoRaio = true;
+        for (const core::Ponto& p : circulo.pontos) {
+            todosNoRaio = todosNoRaio && quaseIgual(std::hypot(p.x - raio, p.y - raio), raio); // centro em (r, r)
+        }
+        verificar(circulo.nome == "circulo" && circulo.pontos.size() == 8, "circulo gera n pontos com o nome certo");
+        verificar(todosNoRaio, "todos os pontos do circulo a distancia r do centro (r, r)");
+        verificar(quaseIgual(core::otimoCirculo(4, 1.0), 4.0 * std::sqrt(2.0)), "otimo com n=4 e o quadrado inscrito, 4*sqrt(2)");
+
+        // integração com o bloco B: Individuo entra direto em distanciaRota, e nenhuma rota fica abaixo do ótimo
+        const core::MatrizDistancias matriz(circulo.pontos);
+        std::mt19937 rng(7);
+        bool permutacoesValidas = true, nenhumaAbaixo = true;
+        for (int k = 0; k < 1000; ++k) {
+            const genetico::Individuo rota = genetico::gerarIndividuoAleatorio(8, rng);
+            permutacoesValidas = permutacoesValidas && genetico::testes::ehPermutacaoValida(rota, 8);
+            nenhumaAbaixo = nenhumaAbaixo && core::distanciaRota(rota, matriz) >= *circulo.otimo - 1e-9;
+        }
+        verificar(permutacoesValidas, "Individuo do bloco B e aceito por distanciaRota");
+        verificar(nenhumaAbaixo, "1000 rotas aleatorias no circulo nunca ficam abaixo do otimo");
+    }
+
+    // uniforme: tamanho, nome e a seed realmente controla os pontos
+    {
+        std::mt19937 rngA(123), rngC(999);
+        const core::Cenario a = core::gerarUniforme(50, 100.0, rngA);
+        const core::Cenario c = core::gerarUniforme(50, 100.0, rngC);
+        verificar(a.nome == "uniforme" && a.pontos.size() == 50, "uniforme gera n pontos com o nome certo");
+        verificar(a.pontos[0].x != c.pontos[0].x, "seeds diferentes geram pontos diferentes");
+    }
+
+    // entradas inválidas: o mínimo da implementação é 3 pontos
+    {
+        std::mt19937 rng(1);
+        verificar(lanca([&] { core::gerarUniforme(2, 100.0, rng); }), "uniforme com menos de 3 pontos lanca invalid_argument");
+        verificar(lanca([] { core::gerarCirculo(0, 1.0); }), "circulo com 0 pontos lanca invalid_argument");
+    }
 
     return tsp::testes::resultadoFinal();
 }
