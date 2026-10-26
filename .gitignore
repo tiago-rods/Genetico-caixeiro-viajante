@@ -1,1 +1,16 @@
-# A ser implementado
+# Build do CMake (gerado, cada um compila na sua máquina)
+build/
+out/
+CMakeUserPresets.json
+
+# Saídas das execuções (CSVs, resumo, figuras): regeneráveis a partir da seed
+resultados/
+
+# Python (viz/)
+__pycache__/
+*.pyc
+.venv/
+
+# Sistema
+Thumbs.db
+.DS_Store
