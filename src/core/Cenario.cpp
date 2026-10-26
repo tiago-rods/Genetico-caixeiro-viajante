@@ -1,58 +1,59 @@
 #include "tsp/core/Cenario.hpp"
 
-#include <cmath>     // cos, sin
-#include <stdexcept> // invalid_argument
+#include <cmath>
+#include <stdexcept>
 
 namespace tsp::core {
-    namespace {
-        // M_PI não faz parte do padrão C++17, então define aqui
-        constexpr double PI = 3.14159265358979323846;
 
-        void validarNumCidades(int numCidades) {
-            // com 0 ou 1 cidade não existe ciclo; o mínimo do enunciado (8) é checado na linha de comando
-            if (numCidades < 2) throw std::invalid_argument("numCidades deve ser >= 2");
+    namespace {
+        constexpr double kPi = 3.14159265358979323846;
+
+        // Ciclo só faz sentido com pelo menos 3 cidades (o mínimo de 8 do enunciado é checado no main)
+        void exigirPontosSuficientes(int numPontos) {
+            if (numPontos < 3) {
+                throw std::invalid_argument("cenario precisa de pelo menos 3 pontos");
+            }
         }
     }
 
-    Cenario gerarUniforme(int numCidades, double lado, std::mt19937& rng) {
-        validarNumCidades(numCidades);
-        if (lado <= 0) throw std::invalid_argument("lado deve ser > 0");
+    Cenario gerarUniforme(int numPontos, double lado, std::mt19937& rng) {
+        exigirPontosSuficientes(numPontos);
 
-        std::uniform_real_distribution<double> distribuicao(0.0, lado);
+        std::uniform_real_distribution<double> coordenada(0.0, lado);
 
         Cenario cenario;
         cenario.nome = "uniforme";
-        cenario.pontos.reserve(numCidades);
-
-        for (int i = 0; i < numCidades; ++i) {
-            /* x e y sorteados em linhas separadas de propósito: numa chamada como f(dist(rng), dist(rng))
-            o C++ não garante qual argumento é avaliado primeiro, e x e y poderiam trocar
-            de compilador pra compilador, quebrando a reprodutibilidade da seed */
-            double x = distribuicao(rng);
-            double y = distribuicao(rng);
+        cenario.pontos.reserve(numPontos);
+        for (int i = 0; i < numPontos; ++i) {
+            // x e y em duas linhas separadas: dentro de um mesmo construtor a ordem de avaliação
+            // dos argumentos não é garantida, e a reprodutibilidade por seed dependeria do compilador
+            double x = coordenada(rng);
+            double y = coordenada(rng);
             cenario.pontos.push_back({x, y});
         }
-        // otimoConhecido fica std::nullopt: não existe fórmula para o ótimo de pontos aleatórios
-        return cenario;
+        return cenario; // ótimo desconhecido, otimo fica vazio
     }
 
-    Cenario gerarCirculo(int numCidades, double raio) {
-        validarNumCidades(numCidades);
-        if (raio <= 0) throw std::invalid_argument("raio deve ser > 0");
+    Cenario gerarCirculo(int numPontos, double raio) {
+        exigirPontosSuficientes(numPontos);
 
         Cenario cenario;
         cenario.nome = "circulo";
-        cenario.pontos.reserve(numCidades);
-
-        for (int i = 0; i < numCidades; ++i) {
-            double angulo = 2.0 * PI * i / numCidades; // pontos igualmente espaçados
-            cenario.pontos.push_back({raio * std::cos(angulo), raio * std::sin(angulo)});
+        cenario.pontos.reserve(numPontos);
+        for (int i = 0; i < numPontos; ++i) {
+            double angulo = 2.0 * kPi * i / numPontos;
+            cenario.pontos.push_back({raio + raio * std::cos(angulo), raio + raio * std::sin(angulo)});
         }
-        cenario.otimoConhecido = otimoCirculo(numCidades, raio);
+        cenario.otimo = otimoCirculo(numPontos, raio);
         return cenario;
     }
 
-    double otimoCirculo(int numCidades, double raio) {
-        return 2.0 * numCidades * raio * std::sin(PI / numCidades);
+    double otimoCirculo(int numPontos, double raio) {
+        // cada aresta do polígono é a corda de um ângulo 2π/n: 2·r·sin(π/n), e são n arestas
+        return 2.0 * numPontos * raio * std::sin(kPi / numPontos);
+    }
+
+    double gapPercentual(double distancia, double otimo) {
+        return 100.0 * (distancia - otimo) / otimo;
     }
 }

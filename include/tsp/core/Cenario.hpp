@@ -8,24 +8,29 @@
 #include "tsp/core/Ponto.hpp"
 
 namespace tsp::core {
-    /* Uma instância do problema: os pontos e, se existir, o comprimento da rota ótima.
-    O índice no vetor de pontos é o id da cidade usado no cromossomo */
+    /* Um cenário é o conjunto de cidades mais o que já se sabe dele de antemão.
+    Só o círculo tem ótimo conhecido (o próprio contorno), por isso o optional:
+    no uniforme não existe gap pra calcular */
     struct Cenario {
-        std::string nome;                     // "uniforme" ou "circulo"
+        std::string nome; // "uniforme" ou "circulo", vai pro resumo.txt
         std::vector<Ponto> pontos;
-        std::optional<double> otimoConhecido; // só o círculo tem; no uniforme fica std::nullopt
+        std::optional<double> otimo; // distância do ciclo ótimo, quando conhecida
     };
 
-    /* N pontos sorteados uniformemente em [0, lado] x [0, lado].
-    Usa o rng recebido, então mesma seed -> mesmos pontos (experimento reproduzível) */
-    Cenario gerarUniforme(int numCidades, double lado, std::mt19937& rng);
+    // numPontos sorteados uniformemente no quadrado [0, lado] x [0, lado]
+    // mesma seed no rng -> mesmos pontos, então dá pra repetir a instância trocando só a seed do AG
+    Cenario gerarUniforme(int numPontos, double lado, std::mt19937& rng);
 
-    /* N pontos igualmente espaçados num círculo de raio 'raio' centrado na origem.
-    Saem em ordem angular, então a rota 0, 1, ..., N-1 é a ótima. Não precisa de rng:
-    a população inicial do AG já é aleatória, isso não facilita nada pro algoritmo */
-    Cenario gerarCirculo(int numCidades, double raio);
+    /* numPontos igualmente espaçados num círculo de raio 'raio' centrado em (raio, raio),
+    ou seja, dentro da mesma caixa do uniforme com lado = 2 * raio (facilita comparar os gráficos).
+    Os índices saem em ordem angular, mas isso não ajuda o AG: a população inicial é
+    embaralhada e nenhum operador olha pro valor do índice, só pras distâncias */
+    Cenario gerarCirculo(int numPontos, double raio);
 
-    /* Comprimento da rota ótima no círculo: N cordas iguais de ângulo 2*pi/N,
-    cada uma medindo 2*R*sin(pi/N) -> total 2*N*R*sin(pi/N) */
-    double otimoCirculo(int numCidades, double raio);
+    // Perímetro do polígono regular inscrito, 2·n·r·sin(π/n): é o ótimo do círculo,
+    // porque qualquer outra ordem cruza o interior e fica mais longa
+    double otimoCirculo(int numPontos, double raio);
+
+    // Quanto a distância encontrada está acima do ótimo, em %: 100 · (distância - ótimo) / ótimo
+    double gapPercentual(double distancia, double otimo);
 }
