@@ -162,7 +162,21 @@ foi escolhido), **Alternativas consideradas** (e por que não),
   normais. Quem plota (D) precisa reconstruir a rota de cada época a
   partir das melhorias (`rotas.csv`), o que é um `searchsorted` sobre a
   coluna `geracao`.
-- **Data**: 2026-10-21
+- **Testes portados da pessoa-A**: a branch `pessoa-A` tinha outra
+  implementação do bloco A, com testes próprios. Na integração ficou esta
+  implementação, e os casos daqueles testes que valem para esta API foram
+  portados para `tests/core/TesteCore.cpp` e `tests/io/TesteIo.cpp`:
+  - matriz inteira conferida contra `distanciaEuclidiana`;
+  - geometria do círculo e ótimo com n = 4;
+  - 1000 `Individuo` aleatórios nunca abaixo do ótimo;
+  - seed controlando o uniforme;
+  - erros do `ArgParser`;
+  - `pontos.csv` e `resumo.txt` com e sem ótimo;
+  - falha de escrita.
+  
+  Ficaram de fora os que dependiam do contrato antigo: formato dos CSVs,
+  `aptidao(0)` lançando erro e chave repetida ou sem valor lançando erro.
+- **Data**: 2026-10-21 (testes portados em 2026-10-26)
 
 ## 006 — Laço evolutivo e parâmetros: população 400, mutação 0,5, estagnação `max(300, 3·n)`
 
