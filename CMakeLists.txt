@@ -1,69 +1,56 @@
 cmake_minimum_required(VERSION 3.16)
-project(GeneticoCaixeiroViajante LANGUAGES CXX)
+project(caixeiro_viajante_genetico LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF) # -std=c++17 puro, sem extensões do GNU
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Sem tipo de build informado, usa Release: o AG roda milhões de avaliações e
-# sem otimização (-O0) o bônus com muitos pontos ficaria muito mais lento
+# Sem tipo de build explícito o AG roda sem otimização, umas 10x mais lento
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Tipo de build" FORCE)
 endif()
 
-# Biblioteca com todo o núcleo: o executável principal, o de experimentos e os testes
-# linkam nela, então cada .cpp é compilado uma vez só
-add_library(tsp STATIC
-    # bloco A
-    src/core/Cenario.cpp
-    src/core/Distancia.cpp
-    src/io/ArgParser.cpp
-    src/io/CsvWriter.cpp
-    # bloco B
-    src/genetico/Individuo.cpp
-    src/genetico/operadores/Torneio.cpp
-    src/genetico/operadores/ERX.cpp
-    src/genetico/operadores/InversaoMutacao.cpp
-    # bloco C
-    src/algoritmo/AlgoritmoGenetico.cpp
-)
-target_include_directories(tsp PUBLIC include)
-
-# Avisos ligados para todo mundo; PUBLIC propaga para quem linka na biblioteca (testes e executáveis)
-if(MSVC)
-    target_compile_options(tsp PUBLIC /W4)
-else()
-    target_compile_options(tsp PUBLIC -Wall -Wextra -pedantic)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Link estático (combinado na divisão do trabalho): o .exe roda em qualquer Windows
-# sem precisar das DLLs do MinGW (libstdc++, libgcc) no PATH
-function(linkar_estatico alvo)
-    if(MINGW) # no Linux/macOS não é necessário (e no macOS -static nem é suportado)
-        target_link_options(${alvo} PRIVATE -static)
-    endif()
-endfunction()
+# MinGW/MSYS2: link estático pra o .exe rodar sem as DLLs do MSYS2 no PATH
+if(MINGW)
+    add_link_options(-static)
+endif()
 
-# Executáveis do bloco C: descomentar quando main.cpp e experimentos.cpp tiverem um main()
-# add_executable(tsp_ag src/main.cpp)
-# target_link_libraries(tsp_ag PRIVATE tsp)
-# linkar_estatico(tsp_ag)
-#
-# add_executable(experimentos src/experimentos.cpp)
-# target_link_libraries(experimentos PRIVATE tsp)
-# linkar_estatico(experimentos)
+find_package(Threads REQUIRED)
 
-# Testes: um executável por módulo, sem framework externo (ver tests/Assercoes.hpp).
-# Cada um retorna 0 se tudo passou; o CTest só olha esse código de saída
+# Tudo menos os main() vira uma biblioteca, reaproveitada pelos executáveis e pelos testes
+add_library(tsp_nucleo STATIC
+    src/core/Cenario.cpp
+    src/core/Distancia.cpp
+    src/genetico/Individuo.cpp
+    src/genetico/operadores/ERX.cpp
+    src/genetico/operadores/InversaoMutacao.cpp
+    src/genetico/operadores/Torneio.cpp
+    src/algoritmo/Parametros.cpp
+    src/algoritmo/AlgoritmoGenetico.cpp
+    src/io/ArgParser.cpp
+    src/io/CsvWriter.cpp
+)
+target_include_directories(tsp_nucleo PUBLIC include)
+
+add_executable(tsp src/main.cpp)
+target_link_libraries(tsp PRIVATE tsp_nucleo)
+
+add_executable(experimentos src/experimentos.cpp)
+target_link_libraries(experimentos PRIVATE tsp_nucleo Threads::Threads)
+
+# Testes: um executável por bloco, cada um devolve != 0 se alguma verificação falhar
 enable_testing()
-
-function(adicionar_teste nome arquivo)
-    add_executable(${nome} ${arquivo})
-    target_link_libraries(${nome} PRIVATE tsp)
-    target_include_directories(${nome} PRIVATE tests) # Assercoes.hpp e helpers como genetico/VerificarPermutacao.hpp
-    linkar_estatico(${nome})
-    add_test(NAME ${nome} COMMAND ${nome})
+function(adicionar_teste nome fonte)
+    add_executable(teste_${nome} ${fonte})
+    target_link_libraries(teste_${nome} PRIVATE tsp_nucleo)
+    target_include_directories(teste_${nome} PRIVATE tests)
+    add_test(NAME ${nome} COMMAND teste_${nome})
 endfunction()
 
-adicionar_teste(testes_core tests/core/TestesCore.cpp)
-adicionar_teste(testes_io tests/io/TestesIo.cpp)
+adicionar_teste(core tests/core/TesteCore.cpp)
+adicionar_teste(io tests/io/TesteIo.cpp)
+adicionar_teste(algoritmo tests/algoritmo/TesteAlgoritmo.cpp)

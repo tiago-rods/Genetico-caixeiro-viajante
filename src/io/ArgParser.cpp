@@ -1,80 +1,112 @@
 #include "tsp/io/ArgParser.hpp"
 
-#include <stdexcept> // invalid_argument, out_of_range
+#include <sstream>
+#include <stdexcept>
 
 namespace tsp::io {
+
     namespace {
-        bool ehChave(const std::string& token) {
-            return token.size() >= 2 && token.compare(0, 2, "--") == 0;
+        bool ehChave(const std::string& argumento) {
+            return argumento.size() > 2 && argumento.compare(0, 2, "--") == 0;
         }
 
-        /* Converte o texto inteiro ou lança erro. std::stoi("12abc") devolveria 12 sem reclamar,
-        então confere se a conversão consumiu todos os caracteres */
-        template <typename Conversor>
-        auto converter(const std::string& chave, const std::string& texto, Conversor conversor, const char* tipo) {
-            try {
-                std::size_t consumidos = 0;
-                auto valor = conversor(texto, &consumidos);
-                if (consumidos != texto.size()) throw std::invalid_argument("sobrou texto");
-                return valor;
-            } catch (const std::exception&) { // invalid_argument ou out_of_range
-                throw std::invalid_argument("--" + chave + " espera um " + tipo + ", recebeu '" + texto + "'");
+        std::vector<std::string> separarPorVirgula(const std::string& texto) {
+            std::vector<std::string> partes;
+            std::stringstream fluxo(texto);
+            std::string parte;
+            while (std::getline(fluxo, parte, ',')) {
+                if (!parte.empty()) partes.push_back(parte);
             }
+            return partes;
+        }
+
+        // stoi/stod aceitam "12abc" e param no 'a'; aqui o texto inteiro tem que ser número
+        int converterInteiro(const std::string& chave, const std::string& texto) {
+            try {
+                std::size_t lidos = 0;
+                int valor = std::stoi(texto, &lidos);
+                if (lidos == texto.size()) return valor;
+            } catch (const std::exception&) {
+                // cai no throw abaixo, com a mensagem que diz qual chave
+            }
+            throw std::invalid_argument("--" + chave + " espera um inteiro, recebeu '" + texto + "'");
+        }
+
+        double converterReal(const std::string& chave, const std::string& texto) {
+            try {
+                std::size_t lidos = 0;
+                double valor = std::stod(texto, &lidos);
+                if (lidos == texto.size()) return valor;
+            } catch (const std::exception&) {
+            }
+            throw std::invalid_argument("--" + chave + " espera um numero, recebeu '" + texto + "'");
         }
     }
 
-    ArgParser::ArgParser(int argc, char** argv) {
-        // argv[0] é o nome do executável, por isso começa do 1
+    ArgParser::ArgParser(int argc, char* argv[]) {
         for (int i = 1; i < argc; ++i) {
-            std::string token = argv[i];
-            if (!ehChave(token)) {
-                throw std::invalid_argument("argumento inesperado '" + token + "', use --chave valor");
+            std::string argumento = argv[i];
+            if (!ehChave(argumento)) {
+                throw std::invalid_argument("argumento inesperado '" + argumento + "' (use --chave valor)");
             }
 
-            std::string chave = token.substr(2);
-            if (chave.empty()) throw std::invalid_argument("chave vazia ('--')");
-
-            // o valor é o próximo token; se não houver ou se já for outra chave, faltou o valor.
-            // número negativo (-5) começa com um traço só, então não é confundido com chave
-            if (i + 1 >= argc || ehChave(argv[i + 1])) {
-                throw std::invalid_argument("--" + chave + " sem valor");
+            std::string chave = argumento.substr(2);
+            // sem valor depois (fim da lista ou outra --chave): é uma flag
+            if (i + 1 < argc && !ehChave(argv[i + 1])) {
+                valores_[chave] = argv[++i];
+            } else {
+                valores_[chave] = "";
             }
-
-            // insert devolve false se a chave já existia: chave repetida é quase sempre engano
-            if (!valores_.insert({chave, argv[i + 1]}).second) {
-                throw std::invalid_argument("--" + chave + " passada mais de uma vez");
-            }
-            ++i; // pula o valor que acabou de ser consumido
         }
     }
 
     bool ArgParser::tem(const std::string& chave) const {
-        usadas_.insert(chave);
+        consultadas_.insert(chave);
         return valores_.count(chave) > 0;
     }
 
-    int ArgParser::obterInt(const std::string& chave, int padrao) const {
-        if (!tem(chave)) return padrao;
-        return converter(chave, valores_.at(chave),
-                         [](const std::string& s, std::size_t* pos) { return std::stoi(s, pos); }, "inteiro");
-    }
-
-    double ArgParser::obterDouble(const std::string& chave, double padrao) const {
-        if (!tem(chave)) return padrao;
-        // stod usa o locale "C" (o programa nunca troca o locale): decimal com ponto, 0.05
-        return converter(chave, valores_.at(chave),
-                         [](const std::string& s, std::size_t* pos) { return std::stod(s, pos); }, "numero");
-    }
-
-    std::string ArgParser::obterString(const std::string& chave, const std::string& padrao) const {
+    std::string ArgParser::texto(const std::string& chave, const std::string& padrao) const {
         if (!tem(chave)) return padrao;
         return valores_.at(chave);
+    }
+
+    int ArgParser::inteiro(const std::string& chave, int padrao) const {
+        if (!tem(chave)) return padrao;
+        return converterInteiro(chave, valores_.at(chave));
+    }
+
+    double ArgParser::real(const std::string& chave, double padrao) const {
+        if (!tem(chave)) return padrao;
+        return converterReal(chave, valores_.at(chave));
+    }
+
+    std::vector<int> ArgParser::listaInteiros(const std::string& chave, const std::vector<int>& padrao) const {
+        if (!tem(chave)) return padrao;
+        std::vector<int> valores;
+        for (const std::string& parte : separarPorVirgula(valores_.at(chave))) {
+            valores.push_back(converterInteiro(chave, parte));
+        }
+        return valores;
+    }
+
+    std::vector<double> ArgParser::listaReais(const std::string& chave, const std::vector<double>& padrao) const {
+        if (!tem(chave)) return padrao;
+        std::vector<double> valores;
+        for (const std::string& parte : separarPorVirgula(valores_.at(chave))) {
+            valores.push_back(converterReal(chave, parte));
+        }
+        return valores;
+    }
+
+    std::vector<std::string> ArgParser::listaTextos(const std::string& chave, const std::vector<std::string>& padrao) const {
+        if (!tem(chave)) return padrao;
+        return separarPorVirgula(valores_.at(chave));
     }
 
     std::vector<std::string> ArgParser::chavesNaoUsadas() const {
         std::vector<std::string> naoUsadas;
         for (const auto& [chave, valor] : valores_) {
-            if (usadas_.count(chave) == 0) naoUsadas.push_back(chave);
+            if (consultadas_.count(chave) == 0) naoUsadas.push_back("--" + chave);
         }
         return naoUsadas;
     }

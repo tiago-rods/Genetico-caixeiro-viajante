@@ -1,52 +1,52 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
-#include <optional>
+#include <fstream>
+#include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "tsp/core/Ponto.hpp"
+#include "tsp/algoritmo/AlgoritmoGenetico.hpp"
+#include "tsp/algoritmo/Parametros.hpp"
+#include "tsp/core/Cenario.hpp"
 
 namespace tsp::io {
-    /* Formato combinado com o bloco D (viz/): separador vírgula, decimal com PONTO
-    (locale "C", independente do Windows estar em pt-BR), cabeçalho na 1a linha, 6 casas decimais */
+    /* Escritor de CSV mínimo: cabeçalho no construtor, uma linha por chamada de linha().
+    Não faz escape de vírgula nem de aspas porque só gravamos números e nomes simples;
+    a rota vai como "3 0 2 1" (espaços), então também não precisa de aspas */
+    class CsvWriter {
+    public:
+        CsvWriter(const std::filesystem::path& caminho, const std::vector<std::string>& cabecalho);
 
-    // uma linha do historico.csv; preenchido pelo bloco C a cada época
-    struct RegistroEpoca {
-        int epoca = 0;
-        double melhorDistancia = 0.0;
-        double mediaDistancia = 0.0;
-        double piorDistancia = 0.0;
-        double tempoMs = 0.0; // tempo acumulado desde o início da execução
+        // variádico: linha(geracao, melhor, media) grava "12,345.6,400.1", qualquer tipo com operator<<
+        template <typename... Valores>
+        void linha(const Valores&... valores) {
+            if (sizeof...(valores) != colunas_) {
+                throw std::logic_error("linha com numero de colunas diferente do cabecalho");
+            }
+            const char* separador = "";
+            ((arquivo_ << separador << valores, separador = ","), ...);
+            arquivo_ << '\n';
+        }
+
+    private:
+        std::ofstream arquivo_;
+        std::size_t colunas_;
     };
 
-    // uma linha do rotas.csv; o bloco C decide de quantas em quantas épocas guardar
-    struct SnapshotRota {
-        int epoca = 0;
-        double distancia = 0.0;
-        std::vector<int> rota; // NÃO repete a primeira cidade no fim; quem plota fecha o ciclo
-    };
+    // "3 0 2 1": formato da rota dentro de uma célula de CSV ou do resumo.txt
+    std::string rotaComoTexto(const std::vector<int>& rota);
 
-    // conteúdo do resumo.txt
-    struct Resumo {
-        std::string cenario;
-        int numCidades = 0;
-        unsigned seed = 0;
-        int epocas = 0;
-        double melhorDistancia = 0.0;
-        std::optional<double> otimo; // se existir (círculo), também escreve o gap percentual
-        double tempoTotalMs = 0.0;
-        int epocaUltimaMelhora = 0;
-        double tempoAteUltimaMelhoraMs = 0.0;
-        // parâmetros do AG em texto livre (populacao=100, ...): o bloco A não precisa conhecer os Parametros do C
-        std::vector<std::pair<std::string, std::string>> parametros;
-    };
-
-    // Todas criam a pasta do arquivo se ela não existir
-    // e lançam std::runtime_error se não conseguirem escrever
-    void escreverPontos(const std::filesystem::path& arquivo, const std::vector<core::Ponto>& pontos);
-    void escreverHistorico(const std::filesystem::path& arquivo, const std::vector<RegistroEpoca>& historico);
-    void escreverRotas(const std::filesystem::path& arquivo, const std::vector<SnapshotRota>& snapshots);
-    void escreverResumo(const std::filesystem::path& arquivo, const Resumo& resumo);
+    /* Arquivos de saída de uma execução (formato combinado com quem plota, pessoa D):
+    pontos.csv    -> indice,x,y
+    historico.csv -> geracao,melhor,media,pior,desvio,diversidade,tempo_ms   (uma linha por época)
+    rotas.csv     -> geracao,distancia,tempo_ms,rota                          (uma linha por melhoria)
+    resumo.txt    -> "chave: valor" por linha, parâmetros e resultado final */
+    void gravarPontos(const std::filesystem::path& caminho, const std::vector<core::Ponto>& pontos);
+    void gravarHistorico(const std::filesystem::path& caminho, const std::vector<algoritmo::EstatisticaGeracao>& historico);
+    void gravarRotas(const std::filesystem::path& caminho, const std::vector<algoritmo::MelhoriaRota>& melhorias);
+    void gravarResumo(const std::filesystem::path& caminho, const core::Cenario& cenario, std::uint32_t seedPontos,
+                      const algoritmo::Parametros& parametros, const algoritmo::Resultado& resultado);
 }
