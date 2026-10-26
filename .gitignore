@@ -1,1 +1,6 @@
 # A ser implementado
+
+# Saídas geradas (Pessoa D). As figuras do relatório vão para docs/figuras/.
+saida/
+saida_exemplo/
+__pycache__/
