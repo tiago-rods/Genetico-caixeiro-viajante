@@ -58,53 +58,40 @@ Início em 05/10/2026, entrega em 28/10/2026.
 - Opcional: diversidade da população por época.
 
 ### Pessoa D — Visualização, execução e relatório
-- `plotar.py`: curva melhor/média/pior por época, grade de rotas, GIF.
-- `plotar_experimentos.py`: mapa de calor, ERX × OX, boxplot das seeds.
-- Rodar com `uv run` (dependências no topo de cada script, PEP 723).
-- `rodar_tudo.ps1`: compila, roda e gera as figuras.
-- Cenários: uniforme e círculo com N ≤ 10 e N ≈ 30–50; bônus com círculo de N = 100 a 1000.
-- `relatorio.md`: junta textos e figuras; usar a tabela de evidências como checklist.
-- Começa com CSVs de exemplo no formato abaixo.
+- Feito (adaptado ao formato real do C++ em 26/10):
+  - `viz/plotar.py`: curva melhor/média/pior e diversidade por época, grade de rotas,
+    GIF, gap e marcos (tempo até gap ≤ 5%, ≤ 1% e última melhora).
+  - `viz/referencias.py`: força bruta (N ≤ 10), vizinho mais próximo e referência
+    2-opt (reaproveita `scripts/referencia_2opt.py`).
+  - `viz/plotar_experimentos.py`: mapas de calor população × mutação, população por
+    seed e critério de parada, a partir de `docs/experimentos/`.
+  - `viz/tabela_seeds.py` (média ± desvio em 10 seeds) e `viz/comparar.py` (mutação
+    baixa × alta).
+  - `scripts/rodar_tudo.ps1`: compila, testa, roda os cenários e gera as figuras.
+  - Cenários: uniforme e círculo com N = 10 e N = 50; bônus com círculo de N = 100,
+    200 e 500.
+  - `relatorio.md`: junta textos e figuras; a tabela de evidências é a checklist.
+- Rodar os scripts com `uv run` (dependências no topo de cada um, PEP 723).
+- Falta: figura ERX × OX, que depende do OX (Pessoa B).
 
 ## Arquivos de saída
 
-Uma pasta por execução (ex.: `saida/circulo_n50_s1/`).
+Formato definido pelo C++ (`src/io/CsvWriter.cpp`; tabela "Arquivos" do README). Uma
+pasta por execução do `tsp` (`--saida`, ex.: `saida/circulo_n50_s1/`).
 
 | Arquivo | Formato |
 |---|---|
 | `pontos.csv` | `indice,x,y` |
-| `historico.csv` | `epoca,melhor,media,pior,tempo_s` (época 0 = população inicial; tempo acumulado) |
-| `rotas.csv` | `epoca,distancia,rota` (índices separados por espaço; toda época, ou a cada `k` com `--intervalo-rotas`) |
-| `resumo.txt` | `chave=valor`: parâmetros, melhor distância, ótimo ou referência, gap, motivo da parada, tempos |
-| `experimentos.csv` | `cenario,n,populacao,taxa_mutacao,cruzamento,seed,melhor,epocas,tempo_s` |
+| `historico.csv` | `geracao,melhor,media,pior,desvio,diversidade,tempo_ms` (geração 0 = população inicial; tempo acumulado) |
+| `rotas.csv` | `geracao,distancia,tempo_ms,rota`, só quando a melhor rota melhora (a rota de uma época é a última linha com `geracao` ≤ época) |
+| `resumo.txt` | `chave: valor`: parâmetros, `melhor_distancia`, `otimo` e `gap_percentual` (círculo), `geracoes`, `motivo_parada`, `geracao_ultima_melhora`, tempos |
+| `varredura.csv`, `estagnacao.csv` | saídas do `experimentos` (em `docs/experimentos/`) |
 
-Argumentos: `--cenario`, `--n`, `--seed`, `--populacao`, `--taxa-cruzamento`,
-`--taxa-mutacao`, `--torneio`, `--elite`, `--max-epocas`, `--estagnacao`,
-`--cruzamento erx|ox`, `--intervalo-rotas`, `--saida`.
+Escala: uniforme em `[0, 100]²` (`--seed-pontos`, padrão 42, fixa os pontos);
+círculo de raio 50 centrado em `(50, 50)`. Opções do `tsp`: `tsp --ajuda`.
 
-### Propostas da Pessoa D (a confirmar com as Pessoas A e C)
-
-Os gráficos já leem estes nomes. Mudar agora é barato; depois de implementado, não.
-
-- **Chaves do `resumo.txt`**: `cenario`, `n`, `seed`, `populacao`, `taxa_cruzamento`,
-  `taxa_mutacao`, `torneio`, `elite`, `max_epocas`, `estagnacao`, `cruzamento`,
-  `intervalo_rotas`, `epocas`, `ultima_melhora`, `melhor`, `vizinho_mais_proximo`,
-  `otimo` e `raio` (círculo), `forca_bruta` (uniforme com N ≤ 10), `gap_pct` (contra
-  `otimo` ou `forca_bruta`), `motivo_parada` (`max_epocas`, `estagnacao` ou `meta`),
-  `tempo_total_s`. Chave ausente não quebra os gráficos.
-- **Escala**: círculo de raio `R = 1`; uniforme em `[0, 1]²`.
-- **`experimentos.csv`**: nova coluna `referencia` no fim (ótimo no círculo, vizinho
-  mais próximo no uniforme). Sem ela, o mapa de calor mostra a distância em vez do gap.
-- **Seed**: no uniforme, os pontos usam uma seed fixa por `n` e `--seed` muda só o AG.
-  Assim as ~10 seeds medem a variação do AG, e não a de instâncias diferentes.
-- **`rotas.csv`**: sempre inclui a época 0 e a última, mesmo com `--intervalo-rotas`.
-- **`--saida`**: no `tsp`, é a pasta da execução (ex.: `saida/circulo_n50_s1/`), criada
-  se não existir. No `experimentos`, é a pasta onde vai o `experimentos.csv`.
-- **Executáveis** (CMake): `tsp` (de `main.cpp`) e `experimentos`, em `build/`.
-
-Para testar os gráficos sem o C++:
-`powershell -ExecutionPolicy Bypass -File scripts\rodar_tudo.ps1 -Exemplo`
-(gera dados falsos em `saida_exemplo/`).
+Para testar os gráficos sem compilar: `scripts\rodar_tudo.ps1 -Exemplo` (gera dados
+falsos no mesmo formato em `saida_exemplo/`).
 
 ## Dependências
 
@@ -132,6 +119,6 @@ sozinho e esconderia o desempenho do AG.
 
 - Atraso no formato dos arquivos trava todo mundo.
 - Bônus pode não chegar ao ótimo: por isso mede-se o gap.
-- `rotas.csv` fica grande com N alto: usar `--intervalo-rotas`.
+- `rotas.csv` ficaria grande com N alto: por isso o C++ grava só as melhorias.
 - O `python` do PATH é o atalho da Microsoft Store: usar `uv run`.
 - A mesma seed só reproduz com o mesmo compilador (g++ do MSYS2).
