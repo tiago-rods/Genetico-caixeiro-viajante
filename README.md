@@ -64,4 +64,34 @@ ERX preserva mais a estrutura dos pais do que o OX, mas por isso também converg
   and traveling salesmen: The genetic edge recombination operator.*
 
 ## Como Rodar
-TODO
+
+### Pré-requisitos
+- [MSYS2](https://www.msys2.org/) com o ambiente UCRT64: `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja`
+- Rodar os comandos no **PowerShell** com `C:\msys64\ucrt64\bin` no PATH. Pelo Git Bash, o g++ do MSYS2 pode falhar sem mostrar mensagem nenhuma.
+  ```powershell
+  $env:PATH = "C:\msys64\ucrt64\bin;" + $env:PATH   # só vale para o terminal atual
+  ```
+
+### Compilar e testar
+Na raiz do repositório:
+```powershell
+cmake -S . -B build -G Ninja          # configura (só na primeira vez ou se mudar o CMakeLists.txt)
+cmake --build build                   # compila (Release por padrão)
+ctest --test-dir build --output-on-failure   # roda todos os testes
+ctest --test-dir build -R core        # roda só um teste (testes_core ou testes_io)
+```
+Para compilar em modo debug: `cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug`.
+
+Os executáveis são linkados com `-static`, então rodam em qualquer Windows sem precisar das DLLs do MinGW.
+
+### Arquivos de saída
+Cada execução grava numa pasta (`resultados/` é ignorada pelo git):
+
+| Arquivo | Conteúdo | Exemplo de linha |
+|---|---|---|
+| `pontos.csv` | `indice,x,y` | `0,37.454012,95.071431` |
+| `historico.csv` | `epoca,melhor,media,pior,tempo_ms` (distâncias, não aptidão) | `0,812.443100,1043.221000,1290.001200,0.840000` |
+| `rotas.csv` | `epoca,distancia,rota` (cidades separadas por espaço, sem repetir a primeira no fim) | `0,1043.221000,4 0 7 2 5 1 6 3` |
+| `resumo.txt` | `chave=valor`; `otimo` e `gap_percentual` só no círculo | `gap_percentual=5.000000` |
+
+Os CSVs usam vírgula como separador, **ponto** como decimal e 6 casas.

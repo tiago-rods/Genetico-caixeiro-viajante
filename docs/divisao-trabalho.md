@@ -27,14 +27,25 @@ Início em 05/10/2026, entrega em 28/10/2026.
 ## Tarefas
 
 ### Pessoa A — Problema, aptidão e infraestrutura
-- `CMakeLists.txt` (C++17, Ninja, `-static`), `.gitignore`, README com como rodar.
-- `Ponto`, `gerarUniforme`, `gerarCirculo`, matriz de distâncias, `distanciaRota` (ciclo fechado). N arbitrário (≥ 8) pela linha de comando.
-- Círculo com pontos igualmente espaçados (ótimo = `2·N·R·sin(π/N)`) e índices embaralhados.
-- Referências para o uniforme: força bruta (N ≤ 10) e vizinho mais próximo.
-- Aptidão `1/distância`. Como o torneio só compara, equivale a usar `−d`.
-- `io/`: argumentos e arquivos de saída (ver abaixo).
-- Testes: quadrado unitário mede 4; ótimo do círculo confere.
-- **Semana 1:** `.hpp` e formato dos arquivos, porque todos dependem disso.
+- `CMakeLists.txt` (C++17, Ninja, link `-static`), `.gitignore`, esqueleto de
+  pastas, `README.md` com como compilar e rodar.
+- `tsp/`: `Ponto`, geração dos cenários (`gerarUniforme`, `gerarCirculo`),
+  ótimo do círculo `2·N·R·sin(π/N)`, matriz de distâncias, `distanciaRota`
+  (ciclo fechado).
+- Função de aptidão: `1 / distância total`.
+- `io/`: leitura dos argumentos da linha de comando e gravação de
+  `pontos.csv`, `historico.csv`, `rotas.csv` e `resumo.txt`.
+- Testes: quadrado unitário mede 4; ótimo do círculo confere com a soma das
+  arestas.
+- **Entrega primeiro (dias 1–2):** os `.hpp` com as assinaturas e o formato
+  dos CSVs, porque B, C e D dependem disso.
+- **Status (23/10): implementado e testado** — `core/` (`Ponto`,
+  `Cenario`, `Distancia` com aptidão), `io/` (`ArgParser`, `CsvWriter`),
+  `CMakeLists.txt` compilando A + B e `.gitignore`. Testes automáticos
+  (`testes_core`, `testes_io`) passando no CTest. Formato dos arquivos de
+  saída no `README.md` ("Como Rodar") e decisões na entrada 005 de
+  `documentacao-decisoes.md`. Para C: descomentar `tsp_ag` e
+  `experimentos` no `CMakeLists.txt` quando os `main()` existirem.
 
 ### Pessoa B — Representação e operadores
 - Feito: permutação de índices; torneio de tamanho `k`; ERX (prioriza arestas comuns aos dois pais, depois o menor grau); mutação por inversão (equivale a um 2-opt aleatório).
