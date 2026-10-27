@@ -72,7 +72,6 @@ Início em 05/10/2026, entrega em 28/10/2026.
     200 e 500.
   - `relatorio.md`: junta textos e figuras; a tabela de evidências é a checklist.
 - Rodar os scripts com `uv run` (dependências no topo de cada um, PEP 723).
-- Falta: figura ERX × OX, que depende do OX (Pessoa B).
 
 ## Arquivos de saída
 
