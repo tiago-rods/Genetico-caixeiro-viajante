@@ -145,10 +145,11 @@ reaproveita arestas dos pais (A–F do pai 2, E–D do pai 1).
 **Trade-off:** o ERX preserva mais a estrutura dos pais, mas a população fica parecida
 mais rápido; por isso a mutação precisa ser alta (seção 3).
 
-**Comparação ERX × OX:** _pendente_. O OX (*Order Crossover*), que copia um trecho do
-pai 1 e completa com as cidades que faltam na ordem do pai 2, ainda não foi
-implementado. O `viz/plotar_experimentos.py` gera `erx_vs_ox.png` sozinho quando houver
-um segundo cruzamento nos CSVs.
+**Comparação ERX × OX:** não foi feita. O OX (*Order Crossover*), que copia um trecho do
+pai 1 e completa com as cidades que faltam na ordem do pai 2, não foi implementado;
+usamos apenas o ERX, pelo argumento acima (o que importa é quais cidades ficam vizinhas,
+não a posição de cada uma). O `viz/plotar_experimentos.py` gera `erx_vs_ox.png` sozinho
+se um segundo cruzamento aparecer nos CSVs.
 
 ## 5. Função de aptidão (1 ponto)
 
@@ -301,7 +302,7 @@ tempos dependem da máquina.
 
 - [x] **População e parada** (Pessoa C): varredura de população; gráfico do limite de estagnação; curvas mostrando onde a melhora para.
 - [x] **Mutação** (Pessoa C): mapas de calor população × mutação; curvas e diversidade com mutação 0, 0,5 e 1.
-- [ ] **Gene e cruzamento** (Pessoa B): explicação do ERX ✓; comparação ERX × OX pendente (falta o OX).
+- [x] **Gene e cruzamento** (Pessoa B): explicação do ERX; a comparação ERX × OX não foi feita (só o ERX foi implementado).
 - [x] **Aptidão** (Pessoa A): explicação de `1/distância`.
 - [x] **Aleatório** (Pessoa D): curvas por época; rotas por época (grade e GIF); força bruta (N = 10), vizinho mais próximo e 2-opt (N = 50); média ± desvio em 10 seeds.
 - [x] **Circular** (Pessoa D): o mesmo, mais o gap para o ótimo.

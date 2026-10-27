@@ -18,7 +18,7 @@ Início em 05/10/2026, entrega em 28/10/2026.
 |---|---|---|
 | População e parada | Varredura de população; curvas mostrando onde a melhora para | Pessoa C |
 | Mutação | Mapa de calor população × mutação; curvas com mutação baixa e alta | Pessoa C |
-| Gene e cruzamento | Explicação do ERX; comparação ERX × OX | Pessoa B |
+| Gene e cruzamento | Explicação do ERX; comparação ERX × OX (dispensada, só o ERX foi implementado) | Pessoa B |
 | Aptidão | Explicação de `1/distância` | Pessoa A |
 | Aleatório | Curvas por época; rotas por época (grade e GIF); comparação com força bruta (N ≤ 10) e vizinho mais próximo; média ± desvio em ~10 seeds | Pessoa D |
 | Circular | O mesmo, mais o gap (%) para o ótimo | Pessoa D |
