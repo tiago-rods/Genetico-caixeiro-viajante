@@ -32,9 +32,9 @@ namespace tsp::genetico {
         }
 
         /*
-        Monta a tabela de vizingos combinando as arestas dos dois pais
-        Se ambos tiverem a mesma aresta, o set guarda somente uma vez (nao seria necessario capturar qual aresta veio de ambos nesse caso?)
-        porém a lógica do ERX apenas se importa se a cidade está ou não no conjunto
+        Monta a tabela de vizinhos combinando as arestas dos dois pais
+        O contador de cada vizinho guarda se a aresta veio de um pai (1) ou dos dois (2),
+        porque o ERX prioriza as arestas comuns aos dois pais na hora de escolher o próximo candidato
         */
 
         TabelaVizinhos construirTabelaVizinhos(const Individuo& pai1, const Individuo& pai2){
